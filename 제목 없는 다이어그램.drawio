@@ -339,13 +339,10 @@
     </mxGraphModel>
   </diagram>
   <diagram id="xz66_C3A1A-pRZ1AXhui" name="페이지-2">
-    <mxGraphModel dx="1409" dy="969" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="1734" dy="1192" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
-        <mxCell id="2usbs8ZJGcfvEMP1Q9eV-226" value="" style="edgeStyle=none;curved=1;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=12;startSize=8;endSize=8;" edge="1" parent="1" source="2usbs8ZJGcfvEMP1Q9eV-19" target="2usbs8ZJGcfvEMP1Q9eV-225">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
         <mxCell id="2usbs8ZJGcfvEMP1Q9eV-19" value="Transaction" style="swimlane;html=1;fontStyle=0;childLayout=stackLayout;horizontal=1;startSize=26;fillColor=#e0e0e0;horizontalStack=0;resizeParent=1;resizeLast=0;collapsible=1;marginBottom=0;swimlaneFillColor=#ffffff;align=center;rounded=0;shadow=0;comic=0;labelBackgroundColor=none;strokeWidth=1;fontFamily=Verdana;fontSize=14" vertex="1" parent="1">
           <mxGeometry x="600" y="520" width="160" height="186" as="geometry" />
         </mxCell>
@@ -504,20 +501,20 @@
           <mxGeometry x="270" y="780" width="120" height="80" as="geometry" />
         </mxCell>
         <mxCell id="2usbs8ZJGcfvEMP1Q9eV-99" value="" style="swimlane;startSize=0;" vertex="1" parent="1">
-          <mxGeometry x="280" y="863" width="100" height="74" as="geometry" />
+          <mxGeometry x="280" y="910" width="100" height="74" as="geometry" />
         </mxCell>
         <mxCell id="2usbs8ZJGcfvEMP1Q9eV-100" value="&lt;span style=&quot;font-size: 8px;&quot;&gt;주문 날짜&lt;/span&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;" vertex="1" parent="2usbs8ZJGcfvEMP1Q9eV-99">
-          <mxGeometry y="40" width="100" height="23" as="geometry" />
+          <mxGeometry y="25.5" width="100" height="23" as="geometry" />
         </mxCell>
         <mxCell id="2usbs8ZJGcfvEMP1Q9eV-101" value="&lt;font style=&quot;font-size: 8px;&quot;&gt;주문 시간&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;" vertex="1" parent="2usbs8ZJGcfvEMP1Q9eV-99">
-          <mxGeometry y="63" width="100" height="23" as="geometry" />
+          <mxGeometry y="48.5" width="100" height="23" as="geometry" />
         </mxCell>
         <mxCell id="2usbs8ZJGcfvEMP1Q9eV-135" value="&lt;font style=&quot;font-size: 8px;&quot;&gt;주문 상태&lt;/font&gt;" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=16;" vertex="1" parent="2usbs8ZJGcfvEMP1Q9eV-99">
-          <mxGeometry y="46" width="100" height="23" as="geometry" />
+          <mxGeometry width="100" height="23" as="geometry" />
         </mxCell>
-        <mxCell id="2usbs8ZJGcfvEMP1Q9eV-102" value="" style="endArrow=none;dashed=1;html=1;dashPattern=1 3;strokeWidth=2;rounded=0;fontSize=12;startSize=8;endSize=8;curved=1;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="2usbs8ZJGcfvEMP1Q9eV-100">
+        <mxCell id="2usbs8ZJGcfvEMP1Q9eV-102" value="" style="endArrow=none;dashed=1;html=1;dashPattern=1 3;strokeWidth=2;rounded=0;fontSize=12;startSize=8;endSize=8;curved=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1">
           <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="275" y="903" as="sourcePoint" />
+            <mxPoint x="330" y="910" as="sourcePoint" />
             <mxPoint x="330" y="860" as="targetPoint" />
           </mxGeometry>
         </mxCell>
@@ -581,7 +578,7 @@
         <mxCell id="2usbs8ZJGcfvEMP1Q9eV-142" style="edgeStyle=none;curved=1;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;exitX=0;exitY=1;exitDx=0;exitDy=0;fontSize=12;startSize=8;endSize=8;" edge="1" parent="1" source="2usbs8ZJGcfvEMP1Q9eV-94" target="2usbs8ZJGcfvEMP1Q9eV-94">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
-        <mxCell id="2usbs8ZJGcfvEMP1Q9eV-143" value="" style="endArrow=none;html=1;rounded=0;fontSize=12;curved=1;shape=link;exitX=1.023;exitY=0.307;exitDx=0;exitDy=0;exitPerimeter=0;" edge="1" parent="1" source="2usbs8ZJGcfvEMP1Q9eV-151" target="2usbs8ZJGcfvEMP1Q9eV-116">
+        <mxCell id="2usbs8ZJGcfvEMP1Q9eV-143" value="" style="endArrow=none;html=1;rounded=0;fontSize=12;curved=1;shape=link;exitX=0.966;exitY=0.903;exitDx=0;exitDy=0;exitPerimeter=0;" edge="1" parent="1" source="2usbs8ZJGcfvEMP1Q9eV-201" target="2usbs8ZJGcfvEMP1Q9eV-116">
           <mxGeometry width="50" height="50" relative="1" as="geometry">
             <mxPoint x="760" y="150" as="sourcePoint" />
             <mxPoint x="810" y="100" as="targetPoint" />
@@ -605,29 +602,14 @@
             <mxPoint x="1445" y="561" as="targetPoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="2usbs8ZJGcfvEMP1Q9eV-229" value="" style="edgeStyle=none;curved=1;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=12;startSize=8;endSize=8;" edge="1" parent="1" source="2usbs8ZJGcfvEMP1Q9eV-151" target="2usbs8ZJGcfvEMP1Q9eV-228">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
         <mxCell id="2usbs8ZJGcfvEMP1Q9eV-151" value="&lt;div style=&quot;line-height: 120%;&quot;&gt;&lt;br&gt;&lt;/div&gt;" style="shape=ext;margin=3;double=1;whiteSpace=wrap;html=1;align=center;" vertex="1" parent="1">
-          <mxGeometry x="599" y="41" width="160" height="249" as="geometry" />
-        </mxCell>
-        <mxCell id="2usbs8ZJGcfvEMP1Q9eV-173" value="userID" style="shape=partialRectangle;top=0;left=0;right=0;bottom=0;html=1;align=left;verticalAlign=middle;fillColor=none;spacingLeft=34;spacingRight=4;whiteSpace=wrap;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;dropTarget=0;fontStyle=5;rotation=0;" vertex="1" parent="1">
-          <mxGeometry x="604" y="70" width="149" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="2usbs8ZJGcfvEMP1Q9eV-174" value="PK" style="shape=partialRectangle;top=0;left=0;bottom=0;html=1;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;whiteSpace=wrap;overflow=hidden;rotatable=0;points=[];portConstraint=eastwest;part=1;" vertex="1" connectable="0" parent="2usbs8ZJGcfvEMP1Q9eV-173">
-          <mxGeometry width="30" height="30" as="geometry" />
+          <mxGeometry x="599" y="80" width="160" height="190" as="geometry" />
         </mxCell>
         <mxCell id="2usbs8ZJGcfvEMP1Q9eV-198" value="&lt;font face=&quot;Verdana&quot;&gt;&lt;br&gt;&lt;span style=&quot;color: rgb(0, 0, 0); font-size: 12px; font-style: normal; font-variant-ligatures: normal; font-variant-caps: normal; font-weight: 400; letter-spacing: normal; orphans: 2; text-indent: 0px; text-transform: none; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; white-space: normal; text-decoration-thickness: initial; text-decoration-style: initial; text-decoration-color: initial; float: none; display: inline !important; background-color: rgb(230, 230, 230);&quot;&gt;portfolio&lt;/span&gt;&lt;/font&gt;&lt;div&gt;&lt;br&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;rotation=0;align=center;fillColor=#E6E6E6;" vertex="1" parent="1">
-          <mxGeometry x="604" y="46" width="150" height="24" as="geometry" />
-        </mxCell>
-        <mxCell id="2usbs8ZJGcfvEMP1Q9eV-199" value="stockID" style="shape=partialRectangle;top=0;left=0;right=0;bottom=1;html=1;align=left;verticalAlign=middle;fillColor=none;spacingLeft=34;spacingRight=4;whiteSpace=wrap;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;dropTarget=0;fontStyle=5;rotation=0;" vertex="1" parent="1">
-          <mxGeometry x="605" y="100" width="149" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="2usbs8ZJGcfvEMP1Q9eV-200" value="" style="shape=partialRectangle;top=0;left=0;bottom=0;html=1;fillColor=none;align=left;verticalAlign=middle;spacingLeft=4;spacingRight=4;whiteSpace=wrap;overflow=hidden;rotatable=0;points=[];portConstraint=eastwest;part=1;" vertex="1" connectable="0" parent="2usbs8ZJGcfvEMP1Q9eV-199">
-          <mxGeometry width="29.0625" height="30" as="geometry" />
+          <mxGeometry x="604" y="86" width="150" height="24" as="geometry" />
         </mxCell>
         <mxCell id="2usbs8ZJGcfvEMP1Q9eV-213" value="" style="group;rotation=0;" vertex="1" connectable="0" parent="1">
-          <mxGeometry x="604" y="130" width="149" height="156" as="geometry" />
+          <mxGeometry x="605" y="110" width="149" height="156" as="geometry" />
         </mxCell>
         <mxCell id="2usbs8ZJGcfvEMP1Q9eV-201" value="보유 수량" style="shape=partialRectangle;top=0;left=0;right=0;bottom=0;html=1;align=left;verticalAlign=top;fillColor=none;spacingLeft=34;spacingRight=4;whiteSpace=wrap;overflow=hidden;rotatable=0;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;dropTarget=0;" vertex="1" parent="2usbs8ZJGcfvEMP1Q9eV-213">
           <mxGeometry width="160" height="26" as="geometry" />
@@ -701,8 +683,16 @@
         <mxCell id="2usbs8ZJGcfvEMP1Q9eV-230" style="edgeStyle=none;curved=1;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;fontSize=12;startSize=8;endSize=8;" edge="1" parent="1" source="2usbs8ZJGcfvEMP1Q9eV-228" target="2usbs8ZJGcfvEMP1Q9eV-19">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
+        <mxCell id="2usbs8ZJGcfvEMP1Q9eV-232" style="edgeStyle=none;curved=1;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;fontSize=12;startSize=8;endSize=8;" edge="1" parent="1" source="2usbs8ZJGcfvEMP1Q9eV-228" target="2usbs8ZJGcfvEMP1Q9eV-151">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
         <mxCell id="2usbs8ZJGcfvEMP1Q9eV-228" value="update" style="rhombus;whiteSpace=wrap;html=1;fillColor=#E6E6E6;" vertex="1" parent="1">
           <mxGeometry x="615.75" y="340" width="128.5" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="2usbs8ZJGcfvEMP1Q9eV-231" style="edgeStyle=none;curved=1;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontSize=12;startSize=8;endSize=8;" edge="1" parent="1" source="2usbs8ZJGcfvEMP1Q9eV-225">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="683" y="710" as="targetPoint" />
+          </mxGeometry>
         </mxCell>
       </root>
     </mxGraphModel>
