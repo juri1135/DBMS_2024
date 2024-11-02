@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>거래 내역</title>
+  </head>
+  <body>
+    <h1>거래 내역 페이지</h1>
+
+    <!-- 상단 버튼 -->
+    <div>
+      <button onclick="window.location.href='/'">홈으로 가기</button>
+      <button onclick="window.location.href='/myInfo'">
+        내 정보 보러 가기
+      </button>
+    </div>
+
+    <!-- 검색 및 기간 필터 -->
+    <div>
+      <input
+        type="text"
+        id="stockSearch"
+        placeholder="주식 종목명 찾기"
+        oninput="fetchTransactions()"
+      />
+      <label>기간 검색:</label>
+      <input type="date" id="startDate" onchange="fetchTransactions()" />
+      <input type="date" id="endDate" onchange="fetchTransactions()" />
+    </div>
+
+    <!-- 거래 내역 테이블 -->
+    <table border="1">
+      <thead>
+        <tr>
+          <th>종목명</th>
+          <th>매수가</th>
+          <th>매도가</th>
+          <th>거래 수량</th>
+          <th>거래 타입</th>
+          <th>거래일시</th>
+        </tr>
+      </thead>
+      <tbody id="transaction-list">
+        <!-- 거래 내역 데이터 표시 -->
+      </tbody>
+    </table>
+
+    <script>
+      function fetchTransactions() {
+        const stockSearch = document.getElementById("stockSearch").value;
+        const startDate = document.getElementById("startDate").value;
+        const endDate = document.getElementById("endDate").value;
+
+        fetch(
+          `/transactions/data?stockSearch=${stockSearch}&startDate=${startDate}&endDate=${endDate}`
+        )
+          .then((response) => response.json())
+          .then((data) => {
+            const transactionList = document.getElementById("transaction-list");
+            transactionList.innerHTML = "";
+            data.forEach((transaction) => {
+              const row = `<tr>
+                            <td>${transaction.stockID}</td>
+                            <td>${
+                              transaction.orderType === "매수"
+                                ? transaction.price.toLocaleString()
+                                : "-"
+                            }</td>
+                            <td>${
+                              transaction.orderType === "매도"
+                                ? transaction.price.toLocaleString()
+                                : "-"
+                            }</td>
+                            <td>${transaction.quantity.toLocaleString()}</td>
+                            <td>${transaction.priceType}</td>
+                            <td>${transaction.time}</td>
+                        </tr>`;
+              transactionList.insertAdjacentHTML("beforeend", row);
+            });
+          })
+          .catch((error) => console.error(error));
+      }
+
+      document.addEventListener("DOMContentLoaded", fetchTransactions);
+    </script>
+  </body>
+</html>

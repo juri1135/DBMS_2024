@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title><%= stockID %> 거래 내역</title>
+  </head>
+  <body>
+    <h1><%= stockID %> 거래 내역</h1>
+
+    <!-- 주식 종목 보러 가기 버튼 -->
+    <button onclick="window.location.href='/stocks'">
+      주식 종목 보러 가기
+    </button>
+
+    <!-- 기간 필터 -->
+    <div>
+      <label>기간 설정:</label>
+      <input type="date" id="startDate" onchange="fetchStockHistory()" />
+      <input type="date" id="endDate" onchange="fetchStockHistory()" />
+    </div>
+
+    <!-- 거래 내역 테이블 -->
+    <table border="1">
+      <thead>
+        <tr>
+          <th>매수가</th>
+          <th>매도가</th>
+          <th>거래 수량</th>
+          <th>거래일시</th>
+        </tr>
+      </thead>
+      <tbody id="history-list"></tbody>
+    </table>
+
+    <script>
+      function fetchStockHistory() {
+        const startDate = document.getElementById("startDate").value;
+        const endDate = document.getElementById("endDate").value;
+        const stockID = "<%= stockID %>";
+
+        fetch(
+          `/stockHistory/data?stockID=${stockID}&startDate=${startDate}&endDate=${endDate}`
+        )
+          .then((response) => response.json())
+          .then((data) => {
+            const historyList = document.getElementById("history-list");
+            historyList.innerHTML = "";
+
+            data.forEach((transaction) => {
+              const row = `<tr>
+                            <td>${
+                              transaction.orderType === "매수"
+                                ? transaction.price.toLocaleString()
+                                : "-"
+                            }</td>
+                            <td>${
+                              transaction.orderType === "매도"
+                                ? transaction.price.toLocaleString()
+                                : "-"
+                            }</td>
+                            <td>${transaction.quantity.toLocaleString()}</td>
+                            <td>${transaction.time}</td>
+                        </tr>`;
+              historyList.insertAdjacentHTML("beforeend", row);
+            });
+          })
+          .catch((error) => console.error(error));
+      }
+
+      document.addEventListener("DOMContentLoaded", fetchStockHistory);
+    </script>
+  </body>
+</html>

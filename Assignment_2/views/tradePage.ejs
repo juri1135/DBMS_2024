@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title><%= stockID %> 거래하기</title>
+  </head>
+  <body>
+    <h1><%= stockID %> 거래하기</h1>
+
+    <!-- 현재 가격 표시 -->
+    <p>현재 가격: <%= curPrice %> 원</p>
+
+    <!-- 시장가, 지정가 선택 버튼 -->
+    <div>
+      <button onclick="selectMarketPrice()">시장가</button>
+      <button onclick="selectLimitPrice()">지정가</button>
+    </div>
+
+    <!-- 수량 및 가격 입력 -->
+    <div id="trade-info">
+      <input
+        type="number"
+        id="quantity"
+        placeholder="수량 입력"
+        min="1"
+        oninput="calculateTotalPrice()"
+        disabled
+      />
+      <input
+        type="number"
+        id="price"
+        placeholder="가격 입력"
+        min="1"
+        oninput="calculateTotalPrice()"
+        disabled
+      />
+      <p id="total-price">총 가격: - 원</p>
+      <p id="message" style="color: red"></p>
+    </div>
+
+    <!-- 매수하기, 매도하기 버튼 -->
+    <div>
+      <button onclick="buy()">매수하기</button>
+      <button onclick="sell()">매도하기</button>
+    </div>
+
+    <script>
+            let selectedPriceType = ""; // 시장가 또는 지정가
+            let selectedOrderType = ""; // 매수 또는 매도
+            let curPrice = <%= curPrice %>; // 현재가 (stock table에서 가져옴)
+            let balance = 0; // 예수금
+            let tradableQty = 0; // 거래 가능 수량
+
+            // 시장가 선택 시 가격 비활성화
+            function selectMarketPrice() {
+                selectedPriceType = "시장가";
+                document.getElementById("price").value = curPrice;
+                document.getElementById("price").disabled = true;
+                document.getElementById("quantity").disabled = false; // 수량 입력 가능
+                calculateTotalPrice();
+            }
+
+            // 지정가 선택 시 가격 활성화
+            function selectLimitPrice() {
+                selectedPriceType = "지정가";
+                document.getElementById("price").value = "";
+                document.getElementById("price").disabled = false;
+                document.getElementById("quantity").disabled = false; // 수량 입력 가능
+                calculateTotalPrice();
+            }
+
+            // 총 가격 계산
+            function calculateTotalPrice() {
+                const quantity = parseInt(document.getElementById("quantity").value) || 0;
+                const price = parseInt(document.getElementById("price").value) || 0;
+                const totalPrice = quantity * price;
+                document.getElementById("total-price").textContent = `총 가격: ${totalPrice} 원`;
+            }
+
+            // 매수하기 버튼 클릭 시
+            function buy() {
+                if (!selectedPriceType) {
+                    document.getElementById("message").textContent = "먼저 시장가 또는 지정가를 선택하세요.";
+                    return;
+                }
+                selectedOrderType = "매수";
+                checkOrderConditions();
+            }
+
+            // 매도하기 버튼 클릭 시
+            function sell() {
+                if (!selectedPriceType) {
+                    document.getElementById("message").textContent = "먼저 시장가 또는 지정가를 선택하세요.";
+                    return;
+                }
+                selectedOrderType = "매도";
+                checkOrderConditions();
+            }
+
+            // 주문 조건 확인
+            function checkOrderConditions() {
+                const quantity = parseInt(document.getElementById("quantity").value);
+                const price = parseInt(document.getElementById("price").value);
+                const totalPrice = quantity * price;
+
+                if (isNaN(quantity) || isNaN(price) || quantity <= 0) {
+                    document.getElementById("message").textContent = "유효한 수량과 가격을 입력하세요.";
+                    return;
+                }
+
+                if (selectedOrderType === "매수") {
+                    fetchBalance(balance => {
+                        if (totalPrice > balance) {
+                            document.getElementById("message").textContent = "돈이 부족합니다.";
+                        } else {
+                            processOrder(quantity, price);
+                        }
+                    });
+                } else if (selectedOrderType === "매도") {
+                    fetchTradableQty(tradableQty => {
+                        if (quantity > tradableQty) {
+                            document.getElementById("message").textContent = "매도 잔량이 부족합니다.";
+                        } else {
+                            processOrder(quantity, price);
+                        }
+                    });
+                }
+            }
+
+            // 예수금 가져오기
+            function fetchBalance(callback) {
+                fetch("/userInfo/balance")
+                    .then(response => response.json())
+                    .then(data => {
+                        balance = data.balance;
+                        callback(balance);
+                    })
+                    .catch(error => {
+                        console.error("예수금 가져오기 오류:", error);
+                        document.getElementById("message").textContent = "예수금을 가져오는 중 오류가 발생했습니다.";
+                    });
+            }
+
+            // 거래 가능 수량 가져오기
+            function fetchTradableQty(callback) {
+                fetch(`/portfolio/tradableQty?stockID=<%= stockID %>`)
+                    .then(response => response.json())
+                    .then(data => {
+                        tradableQty = data.quantity;
+                        callback(tradableQty);
+                    })
+                    .catch(error => {
+                        console.error("거래 가능 수량 가져오기 오류:", error);
+                        document.getElementById("message").textContent = "거래 가능 수량을 가져오는 중 오류가 발생했습니다.";
+                    });
+            }
+
+            // 주문 처리: 주문 정보를 /trade 경로로 전송
+            function processOrder(quantity, price) {
+          console.log("Processing order:", { quantity, price, selectedOrderType, selectedPriceType });
+
+          fetch("/trade", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                  userID: "<%= userID %>",
+                  stockID: "<%= stockID %>",
+                  price: price,
+                  quantity: quantity,
+                  orderType: selectedOrderType,
+                  priceType: selectedPriceType
+              })
+          })
+          .then(response => response.json())
+          .then(data => {
+              if (data.success) {
+                  console.log("Order successfully processed.");
+
+                  if (selectedOrderType === "매도") {
+                      updateTradableQty(quantity, "decrease"); // tradQty 감소
+                  }
+              } else {
+                  document.getElementById("message").textContent = "주문 처리 중 오류가 발생했습니다.";
+              }
+          })
+          .catch(error => {
+              console.error("Error processing order:", error);
+              document.getElementById("message").textContent = "주문 처리 중 오류가 발생했습니다.";
+          });
+      }
+
+      // tradQty 업데이트 함수
+      function updateTradableQty(quantity, action) {
+          const qtyChange = action === "decrease" ? -quantity : quantity;
+
+          fetch("/portfolio/updateTradableQty", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                  userID: "<%= userID %>",
+                  stockID: "<%= stockID %>",
+                  quantityChange: qtyChange
+              })
+          })
+          .then(response => response.json())
+          .then(data => {
+              if (data.success) {
+                  console.log("Tradable quantity successfully updated.");
+              } else {
+                  document.getElementById("message").textContent = "거래 가능 수량 업데이트 중 오류가 발생했습니다.";
+              }
+          })
+          .catch(error => console.error("Error updating tradable quantity:", error));
+      }
+
+            // 입력 필드 초기화
+            function resetInputs() {
+                document.getElementById("quantity").value = "";
+                document.getElementById("price").value = selectedPriceType === "시장가" ? curPrice : "";
+                document.getElementById("total-price").textContent = "총 가격: - 원";
+            }
+    </script>
+  </body>
+</html>

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title><%= stockID %> 호가창</title>
+  </head>
+  <body>
+    <h1><%= stockID %> 호가창</h1>
+    <div>
+      <button onclick="window.location.href='/stocks'">
+        주식 종목 보러 가기
+      </button>
+    </div>
+
+    <table border="1">
+      <thead>
+        <tr>
+          <th>매도잔량</th>
+          <th>매도호가</th>
+          <th>매수호가</th>
+          <th>매수잔량</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% for (let i = 0; i < 10; i++) { %>
+        <tr>
+          <td>
+            <%= i < 5 && sellOrders[i] && sellOrders[i].sellQty > 0 ?
+            sellOrders[i].sellQty.toLocaleString() : '-' %>
+          </td>
+          <td>
+            <%= i < 5 && sellOrders[i] && sellOrders[i].sellPrice > 0 ?
+            sellOrders[i].sellPrice.toLocaleString() : '-' %>
+          </td>
+          <td>
+            <%= i >= 5 && buyOrders[i - 5] && buyOrders[i - 5].buyPrice > 0 ?
+            buyOrders[i - 5].buyPrice.toLocaleString() : '-' %>
+          </td>
+          <td>
+            <%= i >= 5 && buyOrders[i - 5] && buyOrders[i - 5].buyQty > 0 ?
+            buyOrders[i - 5].buyQty.toLocaleString() : '-' %>
+          </td>
+        </tr>
+        <% } %>
+      </tbody>
+      <tfoot>
+        <tr>
+          <th colspan="2">매도 잔량 합계: <%= sellSum.toLocaleString() %></th>
+          <th colspan="2">매수 잔량 합계: <%= buySum.toLocaleString() %></th>
+        </tr>
+      </tfoot>
+    </table>
+  </body>
+</html>

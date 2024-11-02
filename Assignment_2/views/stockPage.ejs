@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>주식 종목 페이지</title>
+    <style>
+      .button-container {
+        display: none;
+        margin-top: 10px;
+      }
+      tr.selected {
+        background-color: #f0f8ff;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>주식 종목</h1>
+
+    <div>
+      <button onclick="window.location.href='/'">홈으로 가기</button>
+      <button onclick="window.location.href='/myInfo'">
+        내 정보 보러 가기
+      </button>
+    </div>
+
+    <!-- 검색 및 정렬 조건 -->
+    <div>
+      <input
+        type="text"
+        id="search"
+        placeholder="주식 찾기 (ID로 검색)"
+        oninput="fetchStocks()"
+      />
+      <select id="sort" onchange="fetchStocks()">
+        <option value="">정렬 조건 선택</option>
+        <option value="chgPercent_desc">전일 대비 상승률</option>
+        <option value="chgPercent_asc">전일 대비 하락률</option>
+        <option value="curPrice_desc">현재가 높은 순</option>
+        <option value="curPrice_asc">현재가 낮은 순</option>
+        <option value="prevClose_desc">전일 종가 높은 순</option>
+        <option value="prevClose_asc">전일 종가 낮은 순</option>
+      </select>
+    </div>
+
+    <!-- 주식 목록 -->
+    <table border="1">
+      <thead>
+        <tr>
+          <th>주식 이름</th>
+          <th>현재가</th>
+          <th>전일 종가</th>
+          <th>전일 대비 등락률</th>
+        </tr>
+      </thead>
+      <tbody id="stock-list"></tbody>
+    </table>
+
+    <!-- 버튼 컨테이너 -->
+    <div id="button-container" class="button-container">
+      <button onclick="viewStockHistory()">거래 내역 보기</button>
+      <button onclick="showOrderBook()">호가창 띄우기</button>
+      <button onclick="startTrading()">거래하기</button>
+    </div>
+
+    <script>
+      let selectedStockID = "";
+
+      // 주식 목록 불러오기
+      function fetchStocks() {
+        const search = document.getElementById("search").value;
+        const sort = document.getElementById("sort").value;
+
+        fetch(`/stocks/data?search=${search}&sort=${sort}`)
+          .then((response) => response.json())
+          .then((data) => {
+            const stockList = document.getElementById("stock-list");
+            stockList.innerHTML = "";
+
+            data.forEach((stock) => {
+              const row = document.createElement("tr");
+              row.innerHTML = `
+                <td>${stock.stockID}</td>
+                <td>${stock.curPrice.toLocaleString()}</td>
+                <td>${stock.prevClose.toLocaleString()}</td>
+                <td>${stock.chgPercent}</td>
+              `;
+              row.onclick = () => selectRow(stock.stockID, row);
+              stockList.appendChild(row);
+            });
+          })
+          .catch((error) => console.error(error));
+      }
+
+      // 행 선택 및 버튼 표시
+      function selectRow(stockID, row) {
+        selectedStockID = stockID;
+        clearSelection();
+        row.classList.add("selected");
+        document.getElementById("button-container").style.display = "block";
+      }
+
+      // 기존 선택 행 초기화
+      function clearSelection() {
+        const rows = document.querySelectorAll("#stock-list tr");
+        rows.forEach((r) => r.classList.remove("selected"));
+      }
+
+      // 거래 내역 보기
+      function viewStockHistory() {
+        window.location.href = `/stockHistory?stockID=${selectedStockID}`;
+      }
+
+      // 호가창 띄우기
+      function showOrderBook() {
+        window.location.href = `/quotePage?stockID=${selectedStockID}`;
+      }
+
+      // 거래하기
+      function startTrading() {
+        window.location.href = `/trade?stockID=${selectedStockID}`;
+      }
+
+      document.addEventListener("DOMContentLoaded", fetchStocks);
+    </script>
+  </body>
+</html>
