@@ -387,6 +387,7 @@ function attemptOrderMatching(stockID) {
                             addTransactionToHistory(sellOrder, matchedQty, buyOrder.price);
                             addTransactionToHistory(buyOrder, matchedQty, buyOrder.price);
 
+                           
                             // 매도 주문 업데이트
                             sellOrder.quantity -= matchedQty;
                             if (sellOrder.quantity === 0) {
@@ -437,63 +438,85 @@ function completeOrder(orderID, quantity) {
     );
 }
 function updatePortfolioAfterTrade(userID, stockID, curPrice, tradeQty, tradePrice, orderType) {
-    if (orderType === "매수") {
-        // 매수일 때 평균 매입가와 관련된 업데이트
-        const updatePortfolioQuery = `
-            UPDATE portfolio
-            SET 
-                quantity = quantity + ?,
-                avgPrice = ((avgPrice * quantity) + (? * ?)) / (quantity + ?),
-                tradQty = tradQty + ?,
-                chgPercent = ((? - avgPrice) / avgPrice) * 100,
-                evalPL = (? - avgPrice) * quantity
-            WHERE userID = ? AND stockID = ?
-        `;
-
-        const params = [
-            tradeQty,         // 추가할 매수 수량
-            tradeQty, tradePrice, // 새 매수 수량 * 매수가
-            tradeQty,         // 기존 + 새 수량으로 업데이트
-            tradeQty,         // 거래 가능 수량도 추가
-            curPrice,         // 현재가
-            curPrice,         // 평가손익 계산을 위해 현재가
-            userID, stockID
-        ];
-
-        sql_connection.query(updatePortfolioQuery, params, (error) => {
+    sql_connection.query(
+        "SELECT * FROM portfolio WHERE userID = ? AND stockID = ?",
+        [userID, stockID],
+        (error, results) => {
             if (error) {
-                console.error("Error updating portfolio after buy trade:", error);
-            } else {
-                console.log("Portfolio updated after buy trade.");
+                console.error("Error checking portfolio existence:", error);
+                return;
             }
-        });
-    } else if (orderType === "매도") {
-        // 매도일 때, 보유 수량과 평가 손익을 업데이트
-        const updatePortfolioQuery = `
-            UPDATE portfolio
-            SET 
-                quantity = quantity - ?,
-                chgPercent = ((? - avgPrice) / avgPrice) * 100,
-                evalPL = (? - avgPrice) * quantity
-            WHERE userID = ? AND stockID = ?
-        `;
 
-        const params = [
-            tradeQty,        // 매도 수량 차감
-            curPrice,        // 등락률 계산을 위한 현재가
-            curPrice,        // 평가손익 계산을 위한 현재가
-            userID, stockID
-        ];
-
-        sql_connection.query(updatePortfolioQuery, params, (error) => {
-            if (error) {
-                console.error("Error updating portfolio after sell trade:", error);
+            if (results.length > 0) {
+                // 기존 보유 주식일 경우 UPDATE
+                if (orderType === "매수") {
+                    const updatePortfolioQuery = `
+                        UPDATE portfolio
+                        SET 
+                            quantity = quantity + ?,
+                            avgPrice = ((avgPrice * quantity) + (? * ?)) / (quantity + ?),
+                            tradQty = tradQty + ?,
+                            chgPercent = ((? - avgPrice) / avgPrice) * 100,
+                            evalPL = (? - avgPrice) * quantity
+                        WHERE userID = ? AND stockID = ?
+                    `;
+                    const params = [
+                        tradeQty,
+                        tradeQty, tradePrice,
+                        tradeQty,
+                        tradeQty,
+                        curPrice,
+                        curPrice,
+                        userID, stockID
+                    ];
+                    sql_connection.query(updatePortfolioQuery, params, (updateError) => {
+                        if (updateError) console.error("Error updating portfolio after buy trade:", updateError);
+                        else console.log("Portfolio updated after buy trade.");
+                    });
+                } else if (orderType === "매도") {
+                    const updatePortfolioQuery = `
+                        UPDATE portfolio
+                        SET 
+                            quantity = quantity - ?,
+                            chgPercent = ((? - avgPrice) / avgPrice) * 100,
+                            evalPL = (? - avgPrice) * quantity
+                        WHERE userID = ? AND stockID = ?
+                    `;
+                    const params = [
+                        tradeQty,
+                        curPrice,
+                        curPrice,
+                        userID, stockID
+                    ];
+                    sql_connection.query(updatePortfolioQuery, params, (updateError) => {
+                        if (updateError) console.error("Error updating portfolio after sell trade:", updateError);
+                        else console.log("Portfolio updated after sell trade.");
+                    });
+                }
             } else {
-                console.log("Portfolio updated after sell trade.");
+                // 신규 주식일 경우 INSERT
+                const insertPortfolioQuery = `
+                    INSERT INTO portfolio (userID, stockID, quantity, avgPrice, chgPercent, evalPL, tradQty)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                `;
+                const params = [
+                    userID,
+                    stockID,
+                    tradeQty,
+                    tradePrice,
+                    0,                  // 신규 매입이므로 등락률 초기값은 0
+                    0,                  // 평가손익 초기값은 0
+                    tradeQty            // 거래 가능 수량은 매수 수량과 동일
+                ];
+                sql_connection.query(insertPortfolioQuery, params, (insertError) => {
+                    if (insertError) console.error("Error inserting new stock into portfolio:", insertError);
+                    else console.log("New stock added to portfolio.");
+                });
             }
-        });
-    }
+        }
+    );
 }
+
 // 체결된 주문을 transactionHistory에 기록하는 함수
 function addTransactionToHistory(order, quantity, curPrice) {
     const { userID, stockID, orderID, price, orderType, priceType } = order;
@@ -511,6 +534,9 @@ function addTransactionToHistory(order, quantity, curPrice) {
             throw error;
         }
         console.log("Transaction successfully added to history.");
+
+        // 포트폴리오 업데이트 호출
+        updatePortfolioAfterTrade(userID, stockID, curPrice, quantity, price, orderType);
     });
 }
 
