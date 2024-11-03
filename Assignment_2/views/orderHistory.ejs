@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>내 주문 예약 내역</title>
+    <style>
+      .button-container {
+        display: none;
+        margin-top: 10px;
+      }
+      tr.selected {
+        background-color: #f0f8ff;
+      }
+      .warning-message {
+        color: red;
+        margin-top: 5px;
+      }
+      .confirm-buttons {
+        display: none;
+        margin-top: 5px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>내 주문 예약 내역</h1>
+
+    <table border="1">
+      <thead>
+        <tr>
+          <th>종목 명</th>
+          <th>주문 수량</th>
+          <th>가격</th>
+          <th>총 가격</th>
+          <th>주문 타입</th>
+          <th>가격 타입</th>
+          <th>주문 일시</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% orders.forEach(order => { %>
+        <tr onclick="selectOrder(<%= order.orderID %>, this)">
+          <td><%= order.stockID %></td>
+          <td><%= order.quantity.toLocaleString() %></td>
+          <td><%= order.price.toLocaleString() %></td>
+          <td><%= order.totalPrice.toLocaleString() %></td>
+          <td><%= order.orderType %></td>
+          <td><%= order.priceType %></td>
+          <td><%= order.formattedTime %></td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+
+    <!-- 거래 취소 버튼 및 경고 메시지 -->
+    <div id="cancel-container" class="button-container">
+      <button onclick="showConfirmButtons()">거래 취소</button>
+      <p id="warning-message" class="warning-message">
+        정말 거래를 취소하시겠습니까?
+      </p>
+      <div id="confirm-buttons" class="confirm-buttons">
+        <button onclick="confirmCancel()">예</button>
+        <button onclick="cancelSelection()">아니오</button>
+      </div>
+    </div>
+
+    <script>
+      let selectedOrderID = null;
+
+      // 주문 행 선택 및 거래 취소 버튼 표시
+      function selectOrder(orderID, row) {
+        console.log("Row selected with orderID:", orderID);
+        selectedOrderID = orderID;
+        clearSelection();
+        row.classList.add("selected");
+        document.getElementById("cancel-container").style.display = "block";
+        document.getElementById("warning-message").style.display = "none";
+        document.getElementById("confirm-buttons").style.display = "none";
+      }
+
+      // 기존 선택 행 초기화
+      function clearSelection() {
+        const rows = document.querySelectorAll("tbody tr");
+        rows.forEach((r) => r.classList.remove("selected"));
+      }
+
+      // 거래 취소 버튼 클릭 시 예/아니오 버튼 표시
+      function showConfirmButtons() {
+        document.getElementById("warning-message").style.display = "block";
+        document.getElementById("confirm-buttons").style.display = "block";
+      }
+
+      // 예 버튼 클릭 시 주문 취소 함수 호출
+      function confirmCancel() {
+        deleteOrder(selectedOrderID);
+      }
+
+      // 아니오 버튼 클릭 시 초기 상태로 돌아가기
+      function cancelSelection() {
+        document.getElementById("cancel-container").style.display = "none";
+        clearSelection();
+      }
+
+      function deleteOrder(orderID) {
+        fetch(`/orderBook/getOrderDetails?orderID=${orderID}`)
+          .then((response) => response.json())
+          .then((order) => {
+            const totalPrice = order.price * order.quantity;
+            console.log(totalPrice);
+            // orderType에 따라 다른 작업 수행
+            if (order.orderType === "매수") {
+              // 매수인 경우: orderBook에서 삭제하고 balance 증가
+              fetch(`/orderBook/deleteOrder`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ orderID }),
+              })
+                .then(() => {
+                  // userInfo의 balance 증가
+                  return fetch(`/userInfo/updateBalance`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      userID: order.userID,
+                      balanceChange: totalPrice,
+                    }),
+                  });
+                })
+                .then(() => {
+                  console.log("Order deleted and balance updated.");
+                  removeOrderRow(orderID); // 화면에서 행 삭제
+                  document.getElementById("cancel-container").style.display =
+                    "none";
+                  alert("주문이 취소되었습니다.");
+                })
+                .catch((error) =>
+                  console.error("Error processing order cancellation:", error)
+                );
+            } else if (order.orderType === "매도") {
+              // 매도인 경우: orderBook에서 삭제하고 portfolio의 tradQty 증가
+              fetch(`/orderBook/deleteOrder`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ orderID }),
+              })
+                .then(() => {
+                  // portfolio의 tradQty 증가
+                  return fetch(`/portfolio/updateTradableQty`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      userID: order.userID,
+                      stockID: order.stockID,
+                      quantityChange: order.quantity,
+                    }),
+                  });
+                })
+                .then(() => {
+                  console.log("Order deleted and tradable quantity updated.");
+                  removeOrderRow(orderID); // 화면에서 행 삭제
+                  document.getElementById("cancel-container").style.display =
+                    "none";
+                  alert("주문이 취소되었습니다.");
+                })
+                .catch((error) =>
+                  console.error("Error processing order cancellation:", error)
+                );
+            }
+          })
+          .catch((error) =>
+            console.error("Error fetching order details:", error)
+          );
+      }
+
+      // 화면에서 행 삭제 함수
+      function removeOrderRow(orderID) {
+        const rows = document.querySelectorAll("tbody tr");
+        rows.forEach((row) => {
+          if (row.onclick.toString().includes(`selectOrder(${orderID},`)) {
+            row.remove(); // 해당 행 삭제
+          }
+        });
+      }
+    </script>
+  </body>
+</html>

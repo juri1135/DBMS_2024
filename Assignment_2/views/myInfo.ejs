@@ -26,6 +26,9 @@
       <button onclick="window.location.href='/transactions'">
         내 거래 내역 보러 가기
       </button>
+      <button onclick="window.location.href='/orderHistory'">
+        주문 내역 보러 가기
+      </button>
       <button onclick="window.location.href='/'">홈으로 가기</button>
       <button onclick="window.location.href='/stocks'">
         주식 종목 보러 가기
@@ -56,7 +59,7 @@
         </tr>
       </thead>
       <tbody id="stock-list">
-        <% portfolio.forEach(stock => { %>
+        <% portfolio.forEach(stock => { %> <% if (stock.quantity > 0) { %>
         <tr class="stock-row">
           <td class="stock-name"><%= stock.stockID %></td>
           <td><%= stock.avgPrice.toLocaleString() %></td>
@@ -66,7 +69,7 @@
           <td><%= stock.chgPercent %> %</td>
           <td><%= stock.tradQty.toLocaleString() %></td>
         </tr>
-        <% }) %>
+        <% } %> <% }) %>
       </tbody>
     </table>
 

@@ -110,6 +110,10 @@ app.post("/logout", (req, res) => {
         }
     );
 });
+
+
+
+//내 정보 보기 페이지
 app.get("/myInfo", (req, res) => {
     if (req.session.state === 'on') {
         const userID = req.session.userID;
@@ -152,9 +156,7 @@ app.get("/myInfo", (req, res) => {
         res.redirect("/login");
     }
 });
-
-
-// 입금 처리
+// 내 정보 보기 페이지에서의 입금 처리
 app.post("/deposit", (req, res) => {
     const amount = req.body.amount;
     sql_connection.query(
@@ -174,8 +176,7 @@ app.post("/deposit", (req, res) => {
         }
     );
 });
-
-// 출금 처리
+// 내 정보 보기 페이지에서의  출금 처리
 app.post("/withdraw", (req, res) => {
     const amount = req.body.amount;
     // 현재 잔액 확인
@@ -211,6 +212,9 @@ app.post("/withdraw", (req, res) => {
         }
     );
 });
+
+
+//주식 정보 페이지
 app.get("/stocks/data", (req, res) => {
     const search = req.query.search || ""; // 검색어
     const sort = req.query.sort || "";     // 정렬 조건
@@ -247,14 +251,16 @@ app.get("/stocks/data", (req, res) => {
         res.json(results);
     });
 });
-
 app.get("/stocks", (req, res) => {
     res.render("stockPage");
 });
+
+
+
+//거래 내역 페이지
 app.get("/transactions", (req, res) => {
     res.render("transactionPage");
 });
-
 app.get("/transactions/data", (req, res) => {
     const userID = req.session.userID; // 세션에서 사용자 ID 가져오기
     const stockSearch = req.query.stockSearch || "";
@@ -283,11 +289,13 @@ app.get("/transactions/data", (req, res) => {
         res.json(results);
     });
 });
+
+
+//주식 종목 별 거래 내역 페이지
 app.get("/stockHistory", (req, res) => {
     const stockID = req.query.stockID;
     res.render("stockHistoryPage", { stockID });
 });
-
 app.get("/stockHistory/data", (req, res) => {
     const stockID = req.query.stockID;
     const startDate = req.query.startDate || "";
@@ -315,7 +323,11 @@ app.get("/stockHistory/data", (req, res) => {
         res.json(results);
     });
 });
-// '/trade' 경로 설정
+
+
+
+
+// 거래하기 페이지
 app.get("/trade", (req, res) => {
     const stockID = req.query.stockID; // 쿼리에서 stockID를 가져옴
 
@@ -358,7 +370,25 @@ app.post("/trade", (req, res) => {
         }
     );
 });
+// 거래 예약 받으면 orderBook table에 추가
+app.post("/orderBook/add", (req, res) => {
+    const { userID, stockID, price, quantity, orderType, priceType } = req.body;
+    const state = "pending"; // 기본 상태는 'pending'
+    const time = new Date();
 
+    const query = `INSERT INTO orderBook (userID, stockID, state, price, quantity, orderType, priceType, time)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+    const params = [userID, stockID, state, price, quantity, orderType, priceType, time];
+
+    sql_connection.query(query, params, (error, results) => {
+        if (error) {
+            console.error("Error inserting into orderBook:", error);
+            res.status(500).json({ error: "Failed to add order to orderBook" });
+            return;
+        }
+        res.json({ success: true, message: "Order added to orderBook" });
+    });
+});
 // 주문 체결 로직
 function attemptOrderMatching(stockID) {
     console.log("attempting to match orders");
@@ -417,7 +447,6 @@ function attemptOrderMatching(stockID) {
         }
     );
 }
-
 function updatePartialOrder(orderID, remainingQty) {
     sql_connection.query(
         "UPDATE orderBook SET quantity = ? WHERE orderID = ? AND state = 'pending'",
@@ -437,6 +466,7 @@ function completeOrder(orderID, quantity) {
         }
     );
 }
+// 주문 체결 이후 portfolio update balance update
 function updatePortfolioAfterTrade(userID, stockID, curPrice, tradeQty, tradePrice, orderType) {
     sql_connection.query(
         "SELECT * FROM portfolio WHERE userID = ? AND stockID = ?",
@@ -490,7 +520,21 @@ function updatePortfolioAfterTrade(userID, stockID, curPrice, tradeQty, tradePri
                     ];
                     sql_connection.query(updatePortfolioQuery, params, (updateError) => {
                         if (updateError) console.error("Error updating portfolio after sell trade:", updateError);
-                        else console.log("Portfolio updated after sell trade.");
+                        else {
+                            console.log("Portfolio updated after sell trade.");
+
+                            // 매도 시 예수금 증가
+                            const balanceIncreaseQuery = `
+                                UPDATE userInfo
+                                SET balance = balance + ?
+                                WHERE userID = ?
+                            `;
+                            const balanceIncrease = tradeQty * tradePrice;
+                            sql_connection.query(balanceIncreaseQuery, [balanceIncrease, userID], (balanceError) => {
+                                if (balanceError) console.error("Error updating balance after sell trade:", balanceError);
+                                else console.log("Balance updated after sell trade.");
+                            });
+                        }
                     });
                 }
             } else {
@@ -516,7 +560,6 @@ function updatePortfolioAfterTrade(userID, stockID, curPrice, tradeQty, tradePri
         }
     );
 }
-
 // 체결된 주문을 transactionHistory에 기록하는 함수
 function addTransactionToHistory(order, quantity, curPrice) {
     const { userID, stockID, orderID, price, orderType, priceType } = order;
@@ -539,8 +582,7 @@ function addTransactionToHistory(order, quantity, curPrice) {
         updatePortfolioAfterTrade(userID, stockID, curPrice, quantity, price, orderType);
     });
 }
-
-// 주식 가격 업데이트
+// 주식 가격 업데이트 ( 수정 필요 )
 function updateCurrentPrice(stockID) {
     sql_connection.query(
         "SELECT MAX(price) AS lastPrice FROM orderBook WHERE stockID = ? AND state = 'complete'",
@@ -567,61 +609,14 @@ function updateCurrentPrice(stockID) {
     );
 }
 
-app.get("/userInfo/balance", (req, res) => {
-    const userID = req.session.userID;
 
-    const query = "SELECT balance FROM userInfo WHERE userID = ?";
-    sql_connection.query(query, [userID], (error, results) => {
-        if (error) {
-            console.error("Error fetching balance:", error);
-            res.status(500).json({ error: "Failed to fetch balance" });
-            return;
-        }
 
-        if (results.length > 0) {
-            res.json({ balance: results[0].balance });
-        } else {
-            res.status(404).json({ error: "User not found" });
-        }
-    });
-});
-app.get("/portfolio/tradableQty", (req, res) => {
-    const stockID = req.query.stockID;
-    const userID = req.session.userID; // 사용자가 로그인되어 있어야 함
 
-    const query = "SELECT tradQty FROM portfolio WHERE userID = ? AND stockID = ?";
-    sql_connection.query(query, [userID, stockID], (error, results) => {
-        if (error) {
-            console.error("Error fetching tradable quantity:", error);
-            res.status(500).json({ error: "Failed to fetch tradable quantity" });
-            return;
-        }
 
-        if (results.length > 0) {
-            res.json({ quantity: results[0].tradQty });
-        } else {
-            res.status(404).json({ error: "Portfolio entry not found" });
-        }
-    });
-});
-app.post("/orderBook/add", (req, res) => {
-    const { userID, stockID, price, quantity, orderType, priceType } = req.body;
-    const state = "pending"; // 기본 상태는 'pending'
-    const time = new Date();
 
-    const query = `INSERT INTO orderBook (userID, stockID, state, price, quantity, orderType, priceType, time)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
-    const params = [userID, stockID, state, price, quantity, orderType, priceType, time];
 
-    sql_connection.query(query, params, (error, results) => {
-        if (error) {
-            console.error("Error inserting into orderBook:", error);
-            res.status(500).json({ error: "Failed to add order to orderBook" });
-            return;
-        }
-        res.json({ success: true, message: "Order added to orderBook" });
-    });
-});
+
+// orderBook 기반으로 5단계 호가창 만들기
 app.get("/orderBook/quote", (req, res) => {
     const stockID = req.query.stockID;
 
@@ -646,9 +641,7 @@ app.get("/orderBook/quote", (req, res) => {
         res.json({ sellOrders, buyOrders });
     });
 });
-// app.js
-// app.js
-// app.js
+// 호가창
 app.get("/quotePage", (req, res) => {
     const stockID = req.query.stockID;
 
@@ -694,6 +687,112 @@ app.get("/quotePage", (req, res) => {
 });
 
 
+
+
+
+
+// 거래 말고 주문 내역 보는 페이지
+app.get('/orderHistory', (req, res) => {
+    const userID = req.session.userID;
+
+    sql_connection.query(
+        "SELECT stockID, quantity, price, price * quantity AS totalPrice, orderType, priceType, DATE_FORMAT(time, '%Y-%m-%d %H:%i:%s') AS formattedTime, orderID FROM orderBook WHERE userID = ? AND state = 'pending' ORDER BY time DESC",
+        [userID],
+        (error, orders) => {
+            if (error) {
+                console.error("Error fetching order history:", error);
+                return res.status(500).send("Internal Server Error");
+            }
+            console.log("Orders fetched:", orders); // orders 확인
+            res.render('orderHistory', { orders });
+        }
+    );
+});
+
+// 특정 주문 정보 가져오기
+app.get('/orderBook/getOrderDetails', (req, res) => {
+    const orderID = req.query.orderID;
+
+    sql_connection.query(
+        "SELECT userID, stockID, orderType, quantity, price FROM orderBook WHERE orderID = ?",
+        [orderID],
+        (error, results) => {
+            if (error) {
+                console.error("Error fetching order details:", error);
+                return res.status(500).json({ success: false, error: "Error fetching order details" });
+            }
+            res.json(results[0]);
+        }
+    );
+});
+
+// 주문 삭제
+app.post('/orderBook/deleteOrder', (req, res) => {
+    const { orderID } = req.body;
+
+    sql_connection.query(
+        "DELETE FROM orderBook WHERE orderID = ?",
+        [orderID],
+        (error) => {
+            if (error) {
+                console.error("Error deleting order:", error);
+                return res.status(500).json({ success: false, error: "Error deleting order" });
+            }
+            res.json({ success: true });
+        }
+    );
+});
+
+// balance 업데이트
+app.post('/userInfo/updateBalance', (req, res) => {
+    const { userID, balanceChange } = req.body;
+
+    // 디버깅용 로그 추가
+    console.log("Received update balance request:");
+    console.log("userID:", userID);
+    console.log("balanceChange:", balanceChange);
+
+    if (!userID || balanceChange == null) {
+        console.error("Invalid data received for balance update");
+        return res.status(400).json({ success: false, error: "Invalid data" });
+    }
+
+    const query = `UPDATE userInfo SET balance = balance + ? WHERE userID = ?`;
+    sql_connection.query(query, [balanceChange, userID], (error, results) => {
+        if (error) {
+            console.error("Balance update error:", error);
+            return res.status(500).json({ success: false, error: "Balance update error" });
+        }
+        res.json({ success: true });
+    });
+});
+
+
+// tradQty 업데이트
+app.post('/portfolio/updateTradableQty', (req, res) => {
+    const { userID, stockID, quantity } = req.body;
+
+    sql_connection.query(
+        "UPDATE portfolio SET tradQty = tradQty + ? WHERE userID = ? AND stockID = ?",
+        [quantity, userID, stockID],
+        (error) => {
+            if (error) {
+                console.error("Error updating tradable quantity:", error);
+                return res.status(500).json({ success: false, error: "Error updating tradable quantity" });
+            }
+            res.json({ success: true });
+        }
+    );
+});
+
+
+
+
+
+
+
+
+// userInfo에서 예수금 update하기 (매수 예약 or 매도 체결)
 app.post('/userInfo/updateBalance', (req, res) => {
     const { userID, balanceChange } = req.body;
     const query = `UPDATE userInfo SET balance = balance + ? WHERE userID = ?`;
@@ -706,6 +805,46 @@ app.post('/userInfo/updateBalance', (req, res) => {
         }
     });
 });
+// userinfo table에서 balance 받아 오기
+app.get("/userInfo/balance", (req, res) => {
+    const userID = req.session.userID;
+
+    const query = "SELECT balance FROM userInfo WHERE userID = ?";
+    sql_connection.query(query, [userID], (error, results) => {
+        if (error) {
+            console.error("Error fetching balance:", error);
+            res.status(500).json({ error: "Failed to fetch balance" });
+            return;
+        }
+
+        if (results.length > 0) {
+            res.json({ balance: results[0].balance });
+        } else {
+            res.status(404).json({ error: "User not found" });
+        }
+    });
+});
+// portfolio table에서 거래 가능 수량 받아 오기
+app.get("/portfolio/tradableQty", (req, res) => {
+    const stockID = req.query.stockID;
+    const userID = req.session.userID; // 사용자가 로그인되어 있어야 함
+
+    const query = "SELECT tradQty FROM portfolio WHERE userID = ? AND stockID = ?";
+    sql_connection.query(query, [userID, stockID], (error, results) => {
+        if (error) {
+            console.error("Error fetching tradable quantity:", error);
+            res.status(500).json({ error: "Failed to fetch tradable quantity" });
+            return;
+        }
+
+        if (results.length > 0) {
+            res.json({ quantity: results[0].tradQty });
+        } else {
+            res.status(404).json({ error: "Portfolio entry not found" });
+        }
+    });
+});
+// portfolio에서 거래 가능 수량 update하기 (매도 예약 or 매수 체결)
 app.post('/portfolio/updateTradableQty', (req, res) => {
     const { userID, stockID, quantityChange } = req.body;
     const query = `UPDATE portfolio SET tradQty = tradQty + ? WHERE userID = ? AND stockID = ?`;
