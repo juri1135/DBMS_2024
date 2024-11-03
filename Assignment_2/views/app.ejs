@@ -17,27 +17,11 @@
       주식 종목 보러 가기
     </button>
     <% } else { %>
-    <button id="login">로그인</button>
-    <button id="signup">회원가입</button>
+    <button onclick="window.location.href='/login'">로그인</button>
+    <button onclick="window.location.href='/signup'">회원가입</button>
     <button onclick="window.location.href='/stocks'">
       주식 종목 보러 가기
     </button>
     <% } %>
-
-    <script>
-      const loginButton = document.getElementById("login");
-      const signupButton = document.getElementById("signup");
-
-      if (loginButton) {
-        loginButton.addEventListener("click", () => {
-          window.location = "http://localhost:3000/login";
-        });
-      }
-      if (signupButton) {
-        signupButton.addEventListener("click", () => {
-          window.location = "http://localhost:3000/signup";
-        });
-      }
-    </script>
   </body>
 </html>
