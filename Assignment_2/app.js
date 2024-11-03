@@ -353,23 +353,33 @@ app.get("/trade", (req, res) => {
 app.post("/trade", (req, res) => {
     const { userID, stockID, price, quantity, orderType, priceType } = req.body;
     const time = new Date();
+    let responseSent = false; // 중복 응답 방지 플래그
 
-    // orderBook에 주문 추가
+    // 주문 추가
     sql_connection.query(
         "INSERT INTO orderBook (userID, stockID, state, price, quantity, orderType, priceType, time) VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)",
         [userID, stockID, price, quantity, orderType, priceType, time],
         (error, results) => {
             if (error) {
-                res.status(500).json({ error: "주문 추가 실패" });
+                if (!responseSent) { // 중복 응답 방지
+                    res.status(500).json({ error: "주문 추가 실패" });
+                    responseSent = true;
+                }
                 throw error;
             }
 
             // 주문 매칭 시도
-            attemptOrderMatching(stockID);
-            res.json({ success: true, message: "주문이 추가되었습니다." });
+            attemptOrderMatching(stockID, price, orderType, quantity, priceType === "시장가", userID, results.insertId);
+
+            if (!responseSent) {
+                res.json({ success: true, message: "주문이 추가되었습니다." });
+                responseSent = true;
+            }
         }
     );
 });
+
+
 // 거래 예약 받으면 orderBook table에 추가
 app.post("/orderBook/add", (req, res) => {
     const { userID, stockID, price, quantity, orderType, priceType } = req.body;
@@ -389,83 +399,8 @@ app.post("/orderBook/add", (req, res) => {
         res.json({ success: true, message: "Order added to orderBook" });
     });
 });
-// 주문 체결 로직
-function attemptOrderMatching(stockID) {
-    console.log("attempting to match orders");
 
-    sql_connection.query(
-        "SELECT * FROM orderBook WHERE stockID = ? AND state = 'pending' AND orderType = '매도' ORDER BY price ASC, time ASC",
-        [stockID],
-        (sellError, sellOrders) => {
-            if (sellError) throw sellError;
 
-            sql_connection.query(
-                "SELECT * FROM orderBook WHERE stockID = ? AND state = 'pending' AND orderType = '매수' ORDER BY price DESC, time ASC",
-                [stockID],
-                (buyError, buyOrders) => {
-                    if (buyError) throw buyError;
-
-                    while (sellOrders.length > 0 && buyOrders.length > 0) {
-                        const sellOrder = sellOrders[0];
-                        const buyOrder = buyOrders[0];
-
-                        // 매도 가격이 매수가 이하인 경우에만 체결
-                        if (sellOrder.price <= buyOrder.price) {
-                            const matchedQty = Math.min(sellOrder.quantity, buyOrder.quantity);
-
-                            // transaction 기록 추가
-                            addTransactionToHistory(sellOrder, matchedQty, buyOrder.price);
-                            addTransactionToHistory(buyOrder, matchedQty, buyOrder.price);
-
-                           
-                            // 매도 주문 업데이트
-                            sellOrder.quantity -= matchedQty;
-                            if (sellOrder.quantity === 0) {
-                                completeOrder(sellOrder.orderID, matchedQty);
-                                sellOrders.shift(); // 매도 주문 완료 시 제거
-                            } else {
-                                updatePartialOrder(sellOrder.orderID, sellOrder.quantity);
-                            }
-
-                            // 매수 주문 업데이트
-                            buyOrder.quantity -= matchedQty;
-                            if (buyOrder.quantity === 0) {
-                                completeOrder(buyOrder.orderID, matchedQty);
-                                buyOrders.shift(); // 매수 주문 완료 시 제거
-                            } else {
-                                updatePartialOrder(buyOrder.orderID, buyOrder.quantity);
-                            }
-
-                            // 현재가 업데이트
-                            updateCurrentPrice(stockID);
-                        } else {
-                            break; // 매칭 가능한 주문이 없으면 중지
-                        }
-                    }
-                }
-            );
-        }
-    );
-}
-function updatePartialOrder(orderID, remainingQty) {
-    sql_connection.query(
-        "UPDATE orderBook SET quantity = ? WHERE orderID = ? AND state = 'pending'",
-        [remainingQty, orderID],
-        (error) => {
-            if (error) throw error;
-        }
-    );
-}
-// 주문 완료 처리
-function completeOrder(orderID, quantity) {
-    sql_connection.query(
-        "UPDATE orderBook SET state = 'complete', quantity = ? WHERE orderID = ?",
-        [quantity, orderID],
-        (error) => {
-            if (error) throw error;
-        }
-    );
-}
 // 주문 체결 이후 portfolio update balance update
 function updatePortfolioAfterTrade(userID, stockID, curPrice, tradeQty, tradePrice, orderType) {
     sql_connection.query(
@@ -478,7 +413,7 @@ function updatePortfolioAfterTrade(userID, stockID, curPrice, tradeQty, tradePri
             }
 
             if (results.length > 0) {
-                // 기존 보유 주식일 경우 UPDATE
+                // 주식이 이미 포트폴리오에 있는 경우: UPDATE
                 if (orderType === "매수") {
                     const updatePortfolioQuery = `
                         UPDATE portfolio
@@ -523,7 +458,6 @@ function updatePortfolioAfterTrade(userID, stockID, curPrice, tradeQty, tradePri
                         else {
                             console.log("Portfolio updated after sell trade.");
 
-                            // 매도 시 예수금 증가
                             const balanceIncreaseQuery = `
                                 UPDATE userInfo
                                 SET balance = balance + ?
@@ -538,7 +472,7 @@ function updatePortfolioAfterTrade(userID, stockID, curPrice, tradeQty, tradePri
                     });
                 }
             } else {
-                // 신규 주식일 경우 INSERT
+                // 신규 주식일 경우: INSERT
                 const insertPortfolioQuery = `
                     INSERT INTO portfolio (userID, stockID, quantity, avgPrice, chgPercent, evalPL, tradQty)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -548,9 +482,9 @@ function updatePortfolioAfterTrade(userID, stockID, curPrice, tradeQty, tradePri
                     stockID,
                     tradeQty,
                     tradePrice,
-                    0,                  // 신규 매입이므로 등락률 초기값은 0
-                    0,                  // 평가손익 초기값은 0
-                    tradeQty            // 거래 가능 수량은 매수 수량과 동일
+                    0,
+                    0,
+                    tradeQty
                 ];
                 sql_connection.query(insertPortfolioQuery, params, (insertError) => {
                     if (insertError) console.error("Error inserting new stock into portfolio:", insertError);
@@ -560,16 +494,155 @@ function updatePortfolioAfterTrade(userID, stockID, curPrice, tradeQty, tradePri
         }
     );
 }
-// 체결된 주문을 transactionHistory에 기록하는 함수
-function addTransactionToHistory(order, quantity, curPrice) {
-    const { userID, stockID, orderID, price, orderType, priceType } = order;
+
+
+function attemptOrderMatching(stockID, price, orderType, quantity, isMarketOrder = false, userID, orderID) {
+    console.log("Attempting to match orders for", stockID, "at price:", price, "Order type:", orderType, "Market order:", isMarketOrder);
+
+    // 첫 매칭 시 지정가 또는 시장가에 따라 조건 지정
+    const queryCondition = isMarketOrder ? "ORDER BY price ASC, time ASC" : "AND price = ? ORDER BY time ASC";
+    const params = isMarketOrder ? [stockID] : [stockID, price];
+
+    sql_connection.query(
+        `SELECT * FROM orderBook WHERE stockID = ? AND state = 'pending' AND orderType = '매도' ${queryCondition}`,
+        params,
+        (sellError, sellOrders) => {
+            if (sellError) throw sellError;
+
+            let remainingQuantity = quantity;
+            let matchedOrders = [];
+            let buyOrder = { userID, stockID, orderID, quantity, price, orderType, priceType: isMarketOrder ? '시장가' : '지정가' };
+
+            for (const sellOrder of sellOrders) {
+                const matchedQty = Math.min(sellOrder.quantity, remainingQuantity);
+                remainingQuantity -= matchedQty;
+
+                console.log(`Matched ${matchedQty} units at price ${sellOrder.price}. Remaining Quantity: ${remainingQuantity}`);
+                console.log(`Sell Order Quantity After Matching: ${sellOrder.quantity}`);
+
+                addTransactionToHistory(sellOrder, matchedQty, sellOrder.price);
+                addTransactionToHistory(buyOrder, matchedQty, sellOrder.price);
+                matchedOrders.push({ order: sellOrder, matchedQty });
+
+                // 남은 수량이 없으면 매칭 완료
+                if (remainingQuantity === 0) break;
+            }
+
+            // 남은 수량이 있을 경우, 더 저렴한 매도 주문을 조회하여 매칭
+if (remainingQuantity > 0) {
+    sql_connection.query(
+        `SELECT * FROM orderBook WHERE stockID = ? AND state = 'pending' AND orderType = '매도' AND price < ? ORDER BY price DESC, time ASC`,
+        [stockID, price],
+        (lowerSellError, lowerSellOrders) => {
+            if (lowerSellError) throw lowerSellError;
+
+            for (const sellOrder of lowerSellOrders) {
+                const matchedQty = Math.min(sellOrder.quantity, remainingQuantity);
+                remainingQuantity -= matchedQty;
+
+                console.log(`Matched ${matchedQty} units at lower price ${sellOrder.price}. Remaining Quantity: ${remainingQuantity}`);
+                addTransactionToHistory(sellOrder, matchedQty, sellOrder.price);
+                matchedOrders.push({ order: sellOrder, matchedQty });
+
+                if (remainingQuantity === 0) break;
+            }
+
+            finalizeMatching(stockID, matchedOrders, buyOrder);
+        }
+    );
+} else {
+    finalizeMatching(stockID, matchedOrders, buyOrder);
+}
+
+        }
+    );
+}
+
+function finalizeMatching(stockID, matchedOrders, buyOrder) {
+    if (matchedOrders.length > 0) {
+        updateCurrentPrice(stockID, () => {
+            matchedOrders.forEach(({ order, matchedQty }) => {
+                const tradeType = order.orderType === '매도' ? '매도' : '매수';
+                updatePortfolioAfterTrade(order.userID, stockID, order.price, matchedQty, order.price, tradeType);
+            });
+            updateOrderStatus(matchedOrders, buyOrder);
+        });
+    } else {
+        console.log("No matching sell orders found.");
+    }
+}
+
+
+// 주문 상태 업데이트 및 수량 감소 처리
+function updateOrderStatus(matchedOrders, buyOrder) {
+    for (const { order, matchedQty } of matchedOrders) {
+        console.log(`Updating orderID: ${order.orderID}, Original Quantity: ${order.quantity}, Matched Quantity: ${matchedQty}`);
+        
+        order.quantity -= matchedQty;
+        console.log(`Updated Quantity after match: ${order.quantity}`);
+
+        if (order.quantity === 0) {
+            completeOrder(order.orderID);
+        } else if (order.quantity > 0) {
+            updatePartialOrder(order.orderID, order.quantity);
+        }
+
+        // 매칭된 수량만큼 매수 주문의 남은 수량 감소
+        buyOrder.quantity -= matchedQty;
+    }
+
+    // 매수 주문의 남은 수량에 따른 처리
+    if (buyOrder && buyOrder.quantity === 0) {
+        completeOrder(buyOrder.orderID);
+    } else if (buyOrder && buyOrder.quantity > 0) {
+        updatePartialOrder(buyOrder.orderID, buyOrder.quantity);
+    }
+}
+
+
+
+
+
+
+
+
+
+// 주문 완료 처리
+function completeOrder(orderID) {
+    sql_connection.query(
+        "UPDATE orderBook SET state = 'complete' WHERE orderID = ?",
+        [orderID],
+        (error) => {
+            if (error) throw error;
+            console.log(`Order ${orderID} completed.`);
+        }
+    );
+}
+
+// 부분 체결 시 주문 업데이트
+function updatePartialOrder(orderID, remainingQty) {
+    console.log(`order: ${orderID }, remain ${remainingQty}`);
+    sql_connection.query(
+        "UPDATE orderBook SET quantity = ? WHERE orderID = ? AND state = 'pending'",
+        [remainingQty, orderID],
+        (error) => {
+            if (error) throw error;
+            console.log(`Order ${orderID} partially updated with remaining quantity ${remainingQty}.`);
+        }
+    );
+}
+
+
+// 체결된 거래를 transactionHistory에 기록하는 함수
+function addTransactionToHistory(order, quantity, tradePrice) {
+    const { userID, stockID, orderID, orderType, priceType } = order;
     const time = new Date();
 
     const query = `
         INSERT INTO transactionHistory (userID, stockID, orderID, price, orderType, quantity, priceType, time)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
-    const params = [userID, stockID, orderID, curPrice, orderType, quantity, priceType, time];
+    const params = [userID, stockID, orderID, tradePrice, orderType, quantity, priceType, time];
 
     sql_connection.query(query, params, (error, results) => {
         if (error) {
@@ -577,37 +650,77 @@ function addTransactionToHistory(order, quantity, curPrice) {
             throw error;
         }
         console.log("Transaction successfully added to history.");
-
-        // 포트폴리오 업데이트 호출
-        updatePortfolioAfterTrade(userID, stockID, curPrice, quantity, price, orderType);
     });
 }
+
 // 주식 가격 업데이트 ( 수정 필요 )
-function updateCurrentPrice(stockID) {
+function updateCurrentPrice(stockID, callback) {
+    // 가장 비싼 매수 주문과 가장 저렴한 매도 주문을 조회
     sql_connection.query(
-        "SELECT MAX(price) AS lastPrice FROM orderBook WHERE stockID = ? AND state = 'complete'",
-        [stockID],
+        `SELECT 
+            (SELECT MAX(price) FROM orderBook WHERE stockID = ? AND state = 'pending' AND orderType = '매수') AS highestBuyPrice,
+            (SELECT MIN(price) FROM orderBook WHERE stockID = ? AND state = 'pending' AND orderType = '매도') AS lowestSellPrice
+        `,
+        [stockID, stockID],
         (error, results) => {
             if (error) throw error;
 
-            const lastPrice = results[0].lastPrice;
+            const highestBuyPrice = results[0].highestBuyPrice;
+            const lowestSellPrice = results[0].lowestSellPrice;
 
-            // lastPrice가 null이 아닌 경우에만 업데이트 수행
-            if (lastPrice !== null) {
-                sql_connection.query(
-                    "UPDATE stock SET curPrice = ? WHERE stockID = ?",
-                    [lastPrice, stockID],
-                    (updateError) => {
-                        if (updateError) throw updateError;
-                        console.log("Current price successfully updated.");
+            // 거래 내역에서 가장 최근의 거래 가격을 조회
+            sql_connection.query(
+                "SELECT price, time FROM transactionHistory WHERE stockID = ? ORDER BY time DESC LIMIT 1",
+                [stockID],
+                (historyError, historyResults) => {
+                    if (historyError) throw historyError;
+
+                    const latestTransactionPrice = historyResults.length ? historyResults[0].price : null;
+                    const latestTransactionTime = historyResults.length ? historyResults[0].time : null;
+
+                    // 최신 가격 결정
+                    let newPrice;
+                    if (latestTransactionPrice !== null) {
+                        // 가장 최근의 거래 가격이 매수/매도 가격과 비교되어야 함
+                        if (highestBuyPrice !== null && lowestSellPrice !== null) {
+                            // 둘 중에서 최신 거래 가격이 비싼 매수 또는 싼 매도보다 더 최신인 경우 해당 가격 선택
+                            newPrice = latestTransactionTime >= Math.max(highestBuyPrice, lowestSellPrice)
+                                ? latestTransactionPrice
+                                : Math.max(highestBuyPrice, lowestSellPrice);
+                        } else if (highestBuyPrice !== null) {
+                            newPrice = Math.max(latestTransactionPrice, highestBuyPrice);
+                        } else if (lowestSellPrice !== null) {
+                            newPrice = Math.min(latestTransactionPrice, lowestSellPrice);
+                        } else {
+                            newPrice = latestTransactionPrice; // 매수/매도 주문이 없는 경우
+                        }
+                    } else {
+                        newPrice = highestBuyPrice !== null ? highestBuyPrice : lowestSellPrice;
                     }
-                );
-            } else {
-                console.log("No completed orders to update curPrice.");
-            }
+
+                    if (newPrice !== null) {
+                        // 주식 테이블에 현재가 업데이트
+                        sql_connection.query(
+                            "UPDATE stock SET curPrice = ? WHERE stockID = ?",
+                            [newPrice, stockID],
+                            (updateError) => {
+                                if (updateError) throw updateError;
+                                console.log("Current price successfully updated to", newPrice);
+
+                                // 가격 업데이트 이후에 포트폴리오 업데이트 진행
+                                if (callback) callback();
+                            }
+                        );
+                    } else {
+                        console.log("No price to update for current price.");
+                        if (callback) callback(); // 가격이 없는 경우에도 callback 호출
+                    }
+                }
+            );
         }
     );
 }
+
 
 
 
