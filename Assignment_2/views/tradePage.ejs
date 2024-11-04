@@ -93,19 +93,20 @@
 
         if (selectedOrderType === "매수") {
           fetchBalance((balance) => {
-            if (selectedPriceType === "지정가") {
-              if (totalPrice <= balance) {
-                updateBalance(totalPrice);
-                processOrder(quantity, price);
-              }
+            if (totalPrice <= balance) {
+              updateBalance(totalPrice);
+              processOrder(quantity, price);
             } else {
-              processOrder(quantity, curPrice);
+              alert("잔액이 부족합니다.");
             }
           });
         } else if (selectedOrderType === "매도") {
           fetchTradableQty((tradableQty) => {
             if (quantity <= tradableQty) {
+              updateTradableQty(quantity);
               processOrder(quantity, price);
+            } else {
+              alert("거래 가능 수량이 부족합니다.");
             }
           });
         }
@@ -155,7 +156,28 @@
           }),
         }).catch((error) => console.error("Error:", error));
       }
-
+      function updateTradableQty(quantity) {
+        fetch(`/portfolio/updateTradableQty`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userID: "<%= userID %>",
+            stockID: "<%= stockID %>",
+            quantity: -Math.abs(quantity), // 매도 시 수량 감소를 위해 음수 사용
+          }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              console.log("Tradable quantity updated successfully.");
+            } else {
+              console.error("Failed to update tradable quantity.");
+            }
+          })
+          .catch((error) =>
+            console.error("Error updating tradable quantity:", error)
+          );
+      }
       function resetInputs() {
         document.getElementById("quantity").value = "";
         document.getElementById("price").value =

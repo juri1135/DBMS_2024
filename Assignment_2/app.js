@@ -269,7 +269,7 @@ app.get("/stocks/data", (req, res) => {
                IFNULL(SUM(th.quantity), 0) AS tradeVolume
         FROM stock
         LEFT JOIN transactionHistory th ON stock.stockID = th.stockID 
-          AND DATE(th.time) = ?  -- 오늘 날짜와 일치하는 거래만 계산
+          AND DATE(th.time) = ?  
         WHERE stock.stockID LIKE ?
         GROUP BY stock.stockID, stock.curPrice, stock.prevClose
     `;
@@ -431,6 +431,7 @@ app.get("/trade", (req, res) => {
 app.post("/trade", (req, res) => {
     const { userID, stockID, price, quantity, orderType, priceType } = req.body;
     const time = new Date();
+    totalTransactionPrice = 0;
     if (orderType === "매수") {
         totalDeductedAmount = price * quantity; // 매수 시 차감금 설정
     }
@@ -566,7 +567,7 @@ function attemptOrderMatching(stockID, price, orderType, quantity, isMarketOrder
         (error, initialOrders) => {
             if (error) throw error;
 
-            console.log("Matched orders:", initialOrders);
+            
             let remainingQuantity = quantity;
             let matchedOrders = [];
             let currentOrder = { userID, stockID, orderID, quantity, price, orderType, priceType: isMarketOrder ? '시장가' : '지정가' };
@@ -577,15 +578,18 @@ function attemptOrderMatching(stockID, price, orderType, quantity, isMarketOrder
 
                 totalTransactionPrice += matchedQty * order.price;
                 console.log(`total(same): ${totalTransactionPrice}`);
-                
+                console.log(`기존 가격 ${totalDeductedAmount}`)
                 addTransactionToHistory(order, matchedQty, order.price);
                 addTransactionToHistory(currentOrder, matchedQty, order.price);
 
-                // 매도자의 잔액 업데이트
+                // 매도당한 사람 잔액 업데이트
                 if (order.orderType === "매도") {
                     updateWallet(order.userID, matchedQty * order.price);
                 }
-
+                else if (order.orderType === "매수") {
+                    const updateBal = -Math.abs(matchedQty * order.price);
+                    updateWallet(order.userID, updateBal);
+                }
                 matchedOrders.push({ order, matchedQty });
 
                 if (remainingQuantity === 0) break;
@@ -602,8 +606,6 @@ function attemptOrderMatching(stockID, price, orderType, quantity, isMarketOrder
 
 
 function finalizeMatching(stockID, matchedOrders, currentOrder) {
-    console.log("Finalizing matching for stock:", stockID);
-    
     
     if (matchedOrders.length > 0) {
         updateOrderStatus(matchedOrders, currentOrder, () => {
@@ -617,16 +619,18 @@ function finalizeMatching(stockID, matchedOrders, currentOrder) {
                     
                     updatePortfolioAfterTrade(currentOrder.userID, stockID, currentOrder.price, matchedQty, currentOrder.orderType === "매수" ? "매수" : "매도");
                 });
-
+                // 매수 주문한 사람
                 if (currentOrder.orderType === "매수") {
                     const balanceAdjustment = totalDeductedAmount - totalTransactionPrice;
-                    updateWallet(currentOrder.userID, balanceAdjustment * -1);
+                    updateWallet(currentOrder.userID, balanceAdjustment);
+                }
+                //매도 주문한 사람
+                if (currentOrder.orderType === "매도") {
+                    updateWallet(currentOrder.userID, totalTransactionPrice);
                 }
             });
         });
-    } else {
-        console.log("No matched orders found, updating current price...");
-        updateCurrentPrice(stockID, () => {});
+    } else {updateCurrentPrice(stockID, () => {});
     }
 }
 
@@ -972,19 +976,7 @@ app.get("/portfolio/tradableQty", (req, res) => {
         }
     });
 });
-// portfolio에서 거래 가능 수량 update하기 (매도 예약 or 매수 체결)
-app.post('/portfolio/updateTradableQty', (req, res) => {
-    const { userID, stockID, quantityChange } = req.body;
-    const query =" UPDATE portfolio SET tradQty = tradQty + ? WHERE userID = ? AND stockID = ?";
-    sql_connection.query(query, [quantityChange, userID, stockID], (error, results) => {
-        if (error) {
-            console.error('Tradable quantity update error:', error);
-            res.json({ success: false });
-        } else {
-            res.json({ success: true });
-        }
-    });
-});
+
 
 app.listen(3000, () => {
     console.log("서버 실행 중");

@@ -103,6 +103,7 @@
         fetch(`/orderBook/getOrderDetails?orderID=${orderID}`)
           .then((response) => response.json())
           .then((order) => {
+            console.log("Order details:", order);
             const totalPrice = order.price * order.quantity;
             // orderType에 따라 다른 작업 수행
             if (order.orderType === "매수") {
@@ -133,6 +134,7 @@
                   console.error("Error processing order cancellation:", error)
                 );
             } else if (order.orderType === "매도") {
+              console.log(`취소하는 수량: ${order.quantity}`);
               // 매도인 경우: orderBook에서 삭제하고 portfolio의 tradQty 증가
               fetch(`/orderBook/deleteOrder`, {
                 method: "POST",
@@ -147,7 +149,7 @@
                     body: JSON.stringify({
                       userID: order.userID,
                       stockID: order.stockID,
-                      quantityChange: order.quantity,
+                      quantity: order.quantity,
                     }),
                   });
                 })
