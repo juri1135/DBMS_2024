@@ -39,6 +39,8 @@
         <option value="curPrice_asc">현재가 낮은 순</option>
         <option value="prevClose_desc">전일 종가 높은 순</option>
         <option value="prevClose_asc">전일 종가 낮은 순</option>
+        <option value="tradeVolume_desc">거래량 많은 순</option>
+        <option value="tradeVolume_asc">거래량 적은 순</option>
       </select>
     </div>
 
@@ -50,6 +52,7 @@
           <th>현재가</th>
           <th>전일 종가</th>
           <th>전일 대비 등락률</th>
+          <th>거래량</th>
         </tr>
       </thead>
       <tbody id="stock-list"></tbody>
@@ -57,9 +60,21 @@
 
     <!-- 버튼 컨테이너 -->
     <div id="button-container" class="button-container">
-      <button onclick="viewStockHistory()">거래 내역 보기</button>
-      <button onclick="showOrderBook()">호가창 띄우기</button>
-      <button onclick="startTrading()">거래하기</button>
+      <button
+        onclick="window.location.href = `/stockHistory?stockID=${selectedStockID}`"
+      >
+        거래 내역 보기
+      </button>
+      <button
+        onclick="window.location.href = `/quotePage?stockID=${selectedStockID}`"
+      >
+        호가창 띄우기
+      </button>
+      <button
+        onclick="window.location.href =`/trade?stockID=${selectedStockID}`"
+      >
+        거래하기
+      </button>
     </div>
 
     <script>
@@ -83,6 +98,7 @@
                 <td>${stock.curPrice.toLocaleString()}</td>
                 <td>${stock.prevClose.toLocaleString()}</td>
                 <td>${stock.chgPercent}</td>
+                <td>${stock.tradeVolume.toLocaleString()}</td>
               `;
               row.onclick = () => selectRow(stock.stockID, row);
               stockList.appendChild(row);
@@ -103,21 +119,6 @@
       function clearSelection() {
         const rows = document.querySelectorAll("#stock-list tr");
         rows.forEach((r) => r.classList.remove("selected"));
-      }
-
-      // 거래 내역 보기
-      function viewStockHistory() {
-        window.location.href = `/stockHistory?stockID=${selectedStockID}`;
-      }
-
-      // 호가창 띄우기
-      function showOrderBook() {
-        window.location.href = `/quotePage?stockID=${selectedStockID}`;
-      }
-
-      // 거래하기
-      function startTrading() {
-        window.location.href = `/trade?stockID=${selectedStockID}`;
       }
 
       document.addEventListener("DOMContentLoaded", fetchStocks);

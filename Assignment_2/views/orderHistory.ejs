@@ -38,7 +38,7 @@
       </thead>
       <tbody>
         <% orders.forEach(order => { %>
-        <tr onclick="selectOrder(<%= order.orderID %>, this)">
+        <tr onclick="selectOrder(`<%= order.orderID %>`, this)">
           <td><%= order.stockID %></td>
           <td><%= order.quantity.toLocaleString() %></td>
           <td><%= order.price.toLocaleString() %></td>
@@ -68,7 +68,6 @@
 
       // 주문 행 선택 및 거래 취소 버튼 표시
       function selectOrder(orderID, row) {
-        console.log("Row selected with orderID:", orderID);
         selectedOrderID = orderID;
         clearSelection();
         row.classList.add("selected");

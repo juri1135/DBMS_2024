@@ -8,7 +8,7 @@
     <h1><%= stockID %> 거래하기</h1>
 
     <!-- 현재 가격 표시 -->
-    <p>현재 가격: <%= curPrice %> 원</p>
+    <p>현재 가격: <%= curPrice.toLocaleString(); %> 원</p>
 
     <!-- 시장가, 지정가 선택 버튼 -->
     <div>
@@ -43,120 +43,123 @@
     <script>
       let selectedPriceType = "";
       let selectedOrderType = "";
-      let curPrice = <%= curPrice %>;
+      let curPrice = Number(`<%= curPrice %>`);
       let balance = 0;
       let tradableQty = 0;
 
       function selectMarketPrice() {
-          selectedPriceType = "시장가";
-          document.getElementById("price").value = "";
-          document.getElementById("price").disabled = true;
-          document.getElementById("quantity").disabled = false;
+        selectedPriceType = "시장가";
+        document.getElementById("price").value = "";
+        document.getElementById("price").disabled = true;
+        document.getElementById("quantity").disabled = false;
       }
 
       function selectLimitPrice() {
-          selectedPriceType = "지정가";
-          document.getElementById("price").value = "";
-          document.getElementById("price").disabled = false;
-          document.getElementById("quantity").disabled = false;
+        selectedPriceType = "지정가";
+        document.getElementById("price").value = "";
+        document.getElementById("price").disabled = false;
+        document.getElementById("quantity").disabled = false;
       }
 
       function buy() {
-          if (!selectedPriceType) {
-              return;
-          }
-          selectedOrderType = "매수";
-          checkOrderConditions();
-          resetInputs();
+        if (!selectedPriceType) {
+          return;
+        }
+        selectedOrderType = "매수";
+        checkOrderConditions();
+        resetInputs();
       }
 
       function sell() {
-          if (!selectedPriceType) {
-              return;
-          }
-          selectedOrderType = "매도";
-          checkOrderConditions();
-          resetInputs();
+        if (!selectedPriceType) {
+          return;
+        }
+        selectedOrderType = "매도";
+        checkOrderConditions();
+        resetInputs();
       }
 
       function checkOrderConditions() {
-          const quantity = parseInt(document.getElementById("quantity").value);
-          const price = selectedPriceType === "시장가" ? curPrice : parseInt(document.getElementById("price").value);
-          const totalPrice = quantity * price;
+        const quantity = parseInt(document.getElementById("quantity").value);
+        const price =
+          selectedPriceType === "시장가"
+            ? curPrice
+            : parseInt(document.getElementById("price").value);
+        const totalPrice = quantity * price;
 
-          if (isNaN(quantity) || isNaN(price) || quantity <= 0) {
-              return;
-          }
+        if (isNaN(quantity) || isNaN(price) || price <= 0 || quantity <= 0) {
+          return;
+        }
 
-          if (selectedOrderType === "매수") {
-              fetchBalance(balance => {
-                  if (selectedPriceType === "지정가") {
-                      if (totalPrice <= balance) {
-                          updateBalance(totalPrice);
-                          processOrder(quantity, price);
-                      }
-                  } else {
-                      processOrder(quantity, curPrice);
-                  }
-              });
-          } else if (selectedOrderType === "매도") {
-              fetchTradableQty(tradableQty => {
-                  if (quantity <= tradableQty) {
-                      processOrder(quantity, price);
-                  }
-              });
-          }
+        if (selectedOrderType === "매수") {
+          fetchBalance((balance) => {
+            if (selectedPriceType === "지정가") {
+              if (totalPrice <= balance) {
+                updateBalance(totalPrice);
+                processOrder(quantity, price);
+              }
+            } else {
+              processOrder(quantity, curPrice);
+            }
+          });
+        } else if (selectedOrderType === "매도") {
+          fetchTradableQty((tradableQty) => {
+            if (quantity <= tradableQty) {
+              processOrder(quantity, price);
+            }
+          });
+        }
       }
 
       function fetchBalance(callback) {
-          fetch("/userInfo/balance")
-              .then(response => response.json())
-              .then(data => {
-                  balance = data.balance;
-                  callback(balance);
-              });
+        fetch("/userInfo/balance")
+          .then((response) => response.json())
+          .then((data) => {
+            balance = data.balance;
+            callback(balance);
+          });
       }
 
       function fetchTradableQty(callback) {
-          fetch(`/portfolio/tradableQty?stockID=<%= stockID %>`)
-              .then(response => response.json())
-              .then(data => {
-                  tradableQty = data.quantity;
-                  callback(tradableQty);
-              });
+        fetch(`/portfolio/tradableQty?stockID=<%= stockID %>`)
+          .then((response) => response.json())
+          .then((data) => {
+            tradableQty = data.quantity;
+            callback(tradableQty);
+          });
       }
 
       function processOrder(quantity, price) {
-          fetch("/trade", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                  userID: "<%= userID %>",
-                  stockID: "<%= stockID %>",
-                  price: price,
-                  quantity: quantity,
-                  orderType: selectedOrderType,
-                  priceType: selectedPriceType
-              })
-          });
+        fetch("/trade", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userID: "<%= userID %>",
+            stockID: "<%= stockID %>",
+            price: price,
+            quantity: quantity,
+            orderType: selectedOrderType,
+            priceType: selectedPriceType,
+          }),
+        });
       }
 
       function updateBalance(amount) {
-          const balanceChange = -Math.abs(amount);
-
-          fetch("/userInfo/updateBalance", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                  userID: "<%= userID %>",
-                  balanceChange: balanceChange
-              })
-          });
+        const balanceChange = -Math.abs(amount);
+        fetch("/userInfo/updateBalance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userID: "<%= userID %>",
+            balanceChange: balanceChange,
+          }),
+        }).catch((error) => console.error("Error:", error));
       }
 
       function resetInputs() {
-          document.getElementById("quantity").value = "";
-          document.getElementById("price").value = selectedPriceType === "시장가" ? curPrice : "";
+        document.getElementById("quantity").value = "";
+        document.getElementById("price").value =
+          selectedPriceType === "시장가" ? curPrice : "";
       }
     </script>
   </body>

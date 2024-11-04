@@ -82,10 +82,13 @@
             "유효한 금액을 입력하세요.";
           return;
         }
-        fetch("/deposit", {
+        fetch("/userInfo/updateBalance", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount }),
+          body: JSON.stringify({
+            userID: "<%= userID %>", // EJS를 사용하여 userID를 포함
+            balanceChange: amount,
+          }),
         })
           .then((response) => response.json())
           .then((data) => {
@@ -103,10 +106,14 @@
             "유효한 금액을 입력하세요.";
           return;
         }
-        fetch("/withdraw", {
+        const balanceChange = -Math.abs(amount);
+        fetch("/userInfo/updateBalance", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ amount }),
+          body: JSON.stringify({
+            userID: "<%= userID %>", // EJS를 사용하여 userID를 포함
+            balanceChange,
+          }),
         })
           .then((response) => response.json())
           .then((data) => {
