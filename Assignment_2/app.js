@@ -478,18 +478,13 @@ function updatePortfolioAfterTrade(userID, stockID, tradePrice, matchedQty, orde
                         SET 
                             avgPrice = ((avgPrice * quantity) + (? * ?)) / (quantity + ?),
                             quantity = quantity + ?,
-                            tradQty = tradQty + ?,
-                            chgPercent = ((? - avgPrice) / avgPrice) * 100,
-                            evalPL = (? - avgPrice) * quantity
+                            tradQty = tradQty + ?
                         WHERE userID = ? AND stockID = ?`
                     ;
                     const params = [
-                        matchedQty, tradePrice, // 체결된 거래 가격 사용
+                        matchedQty, tradePrice,matchedQty, // 체결된 거래 가격 사용
                         matchedQty,
                         matchedQty,
-                        matchedQty,
-                        tradePrice, // 체결된 거래 가격 사용
-                        tradePrice, // 체결된 거래 가격 사용
                         userID, stockID
                     ];
                     sql_connection.query(updatePortfolioQuery, params, (updateError) => {
@@ -500,15 +495,11 @@ function updatePortfolioAfterTrade(userID, stockID, tradePrice, matchedQty, orde
                     const updatePortfolioQuery = 
                         `UPDATE portfolio
                         SET 
-                            quantity = quantity - ?,
-                            chgPercent = ((? - avgPrice) / avgPrice) * 100,
-                            evalPL = (? - avgPrice) * quantity
+                            quantity = quantity - ?
                         WHERE userID = ? AND stockID = ?`
                     ;
                     const params = [
                         matchedQty,
-                        tradePrice, // 체결된 거래 가격 사용
-                        tradePrice, // 체결된 거래 가격 사용
                         userID, stockID
                     ];
                     sql_connection.query(updatePortfolioQuery, params, (updateError) => {
@@ -599,7 +590,6 @@ function attemptOrderMatching(stockID, price, orderType, quantity, isMarketOrder
         }
     );
 }
-
 
 
 
@@ -760,8 +750,8 @@ function updateCurrentPrice(stockID, callback) {
         (error, results) => {
             if (error) throw error;
 
-            const highestBuyPrice = results[0].highestBuyPrice;
-            const lowestSellPrice = results[0].lowestSellPrice;
+            const highestBuyPrice = results[0].highestBuyPrice !== null ? parseInt(results[0].highestBuyPrice) : null;
+            const lowestSellPrice = results[0].lowestSellPrice !== null ? parseInt(results[0].lowestSellPrice) : null;
 
             // 매수 최고가와 매도 최저가에 일치하는 거래 내역을 조회
             sql_connection.query(
@@ -783,19 +773,25 @@ function updateCurrentPrice(stockID, callback) {
                             break; // 가장 최근 거래 내역만 필요하므로 중지
                         }
                     }
-
                     // 새로운 현재가 결정 로직
-                    let newPrice;
-                    if (latestTransactionPrice === highestBuyPrice) {
-                        newPrice = highestBuyPrice;
-                    } else if (latestTransactionPrice === lowestSellPrice) {
-                        newPrice = lowestSellPrice;
-                    } else if (highestBuyPrice !== null && lowestSellPrice !== null) {
-                        newPrice = (highestBuyPrice + lowestSellPrice) / 2;
-                    } else {
-                        newPrice = highestBuyPrice || lowestSellPrice;
-                    }
+                    // 새로운 현재가 결정 로직
+let newPrice;
 
+if (latestTransactionPrice !== null && latestTransactionPrice === highestBuyPrice) {
+    newPrice = highestBuyPrice;
+} else if (latestTransactionPrice !== null && latestTransactionPrice === lowestSellPrice) {
+    newPrice = lowestSellPrice;
+} else if (highestBuyPrice != null && lowestSellPrice !== null) {
+    newPrice = (highestBuyPrice + lowestSellPrice) / 2;
+} else if (lowestSellPrice != null) {
+    newPrice = lowestSellPrice;
+} else if (highestBuyPrice != null) {
+    newPrice = highestBuyPrice;
+} else {
+    newPrice = null;
+}
+
+                    console.log(`highest ${highestBuyPrice}, lowest ${lowestSellPrice}, newPrice ${newPrice}`)
                     if (newPrice !== null) {
                         // 주식 테이블에 현재가 업데이트
                         sql_connection.query(
