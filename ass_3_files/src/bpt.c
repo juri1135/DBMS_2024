@@ -235,7 +235,7 @@ char * db_find(int64_t key) {
     for (i = 0; i < c->num_of_keys; i++) {
         if (c->records[i].key == key) {
             //일치하는 거 찾으면 해당 value 복사
-            char *value = strdup(current_page->records[i].value);
+            char *value = strdup(c->records[i].value);
             free(c);
             return value;
         }
@@ -346,14 +346,14 @@ page * insert_into_node(page * root, page * page, int left_index, int64_t new_ke
     //left_index가 0이라면 next v0 p0 key new_node v2 p2
     //new_node는 origin보단 커야 해서 leftmost가 될 수 없음 
     //num key부터 left_index+1까지 밀어
-    for (i =page->num_keys-1; i > left_index; i--) {
+    for (i =page->num_of_keys-1; i > left_index; i--) {
        page->b_f[i+1].key=page->b_f[i].key;
        page->b_f[i+1].p_offset=page->b_f[i].p_offset;
     }
    page->b_f[left_index+1].key =new_key;
     //근데 이러면 new_node가 leaf일 때만 해당. 
    page->b_f[left_index+1].p_offset = new_offset;
-   page->num_keys++;
+   page->num_of_keys++;
 
     return root;
 }
@@ -381,9 +381,9 @@ page * insert_into_parent(page * root, page * origin_child, off_t origin_child_o
     int left_index;
     page * parent;
 
-    parent =load_page(origin_child->parent_page_offset);
-
-
+    
+    off_t parent_offset=origin_child->parent_page_offset;
+    parent =load_page(parent_offset);
     if (parent == NULL) //기존 node가 root였기 때문에 root에 넣는다.
         return insert_into_new_root(origin_child,origin_child_offset,key,new_child,new_child_offset);
 
@@ -393,10 +393,31 @@ page * insert_into_parent(page * root, page * origin_child, off_t origin_child_o
     left_index = get_left_index(parent, origin_child_offset);
 
     //부모에 자리 있으면 parent record의 v(left_index+1)에 key, p(left_index+1)에 new_node 삽입 
-    if (parent->num_keys < LEAF_MAX - 1)
+    if (parent->num_of_keys < LEAF_MAX - 1)
         return insert_into_node(root, parent, left_index, key, new_child_offset);
 
-    
+    //todo key rotation 검사!!!!
+    //공간 없으면 왼쪽, 오른쪽 sibling 확인해서 공간 있는 지 확인. 
+    bool is_left_sibling, is_right_sibling;
+    off_t left_sibling_offset = find_left_sibling(parent, parent_offset,&is_left_sibling);
+    off_t right_sibling_offset = find_right_sibling( parent, parent_offset,&is_right_sibling);
+    page * left_sibling=load_page(left_sibling_offset);
+    page * right_sibling=load_page(right_sibling_offset);
+
+    //todo 왼쪽 존재하면 key rotation 가능한 지 확인 가능하면 수행하고 return, 
+    //todo 불가능하고 오른쪽 존재하면 key rotation 가능여부 확인. 가능하면 수행하고 return, 불가능이면 split하러...
+    //todo insert node split, insert leaf split에서도 split 전에 key rotation 가능여부 확인해야 함. 
+    if(is_left_sibling&&left_sibling->num_of_keys<INTERNAL_MAX-1){
+        //새로 들어갈 key, pointer 넘겨줘야 함!!!!!!!!!! 
+        internal_left_rotation(root, left_sibling_offset, left_sibling, parent_offset,parent,key,new_child_offset);
+        free(left_sibling);
+        return 0;
+    }
+    if(is_right_sibling&&right_sibling->num_of_keys<INTERNAL_MAX-1){
+        internal_right_rotation(root, parent_offset,parent, right_sibling_offset, right_sibling,key,new_child_offset);
+        free(right_sibling);
+        return 0;
+    }
 
     return insert_into_node_after_splitting(root, origin_child->parent_page_offset,parent, left_index, key, new_child_offset);
 }
@@ -425,7 +446,7 @@ page * insert_into_node_after_splitting(page * root, off_t old_node_offset, page
     new_node->num_of_keys=0;
     new_node->is_leaf=0;
     //new node의 next offset은 b_f[num_of_key-1].pointer. old도 마찬가지. 둘 다 update 필요. 
-    memset(leaf->records, 0, sizeof(new_leaf->records));
+    memset(new_node->records, 0, sizeof(new_node->records));
     pwrite(fd,new_node,sizeof(page),new_node_offset);
     free(new_node);
     new_node=load_page(new_node_offset);
@@ -435,7 +456,7 @@ page * insert_into_node_after_splitting(page * root, off_t old_node_offset, page
      for (i = 0, j = 0; i < old_node->num_of_keys; i++, j++) {
         if (j == left_index + 1) j++;
         temp_pointers[j] = old_node->b_f[i].p_offset;
-        temp_keys[j]=old_node->key[i].key;
+        temp_keys[j]=old_node->b_f[i].key;
     }
 
     temp_pointers[left_index+1] = new_pointer;
@@ -455,7 +476,7 @@ page * insert_into_node_after_splitting(page * root, off_t old_node_offset, page
         new_node->b_f[k].key = temp_keys[i];
         new_node->num_of_keys++;
     }
-    new_node->next_offset = old_node.b_f[old_node->num_of_keys-1].p_offset;
+    new_node->next_offset = old_node->b_f[old_node->num_of_keys-1].p_offset;
     k_prime = new_node->b_f[0].key;
     
     pwrite(fd,old_node,sizeof(page), old_node_offset);
@@ -529,7 +550,7 @@ page * insert_into_leaf_after_splitting(page * root, page * leaf, int64_t key, r
 
     //새 leaf node의 첫 번째 key가 두 leaf node의 방향key가 된다.
     new_key = new_leaf->records[0].key; 
-    root= insert_into_parent(root, leaf,leaf_offset, new_key, new_leaf_offset);
+    root= insert_into_parent(root, leaf,leaf_offset, new_key, new_leaf,new_leaf_offset);
     // TODO:pwrite!!
     free(new_leaf);
 
@@ -579,14 +600,77 @@ off_t find_right_sibling(page * node, off_t node_offset, bool* is_right_sibling)
     return NULL;
 }
 
-
+//! return root할 때 다 disk에 저장하고, root 다시 load해서 보내야 함. 
 page * leaf_left_rotation(page * root, off_t left_sibling_offset, page* left_sibling, off_t leaf_offset, page * leaf, record pair){
-
+    left_sibling->records[left_sibling->num_of_keys] = pair;
+    left_sibling->num_of_keys++;
+    //todo 아직 넣기 전이라서 parent를 고쳐줄 필요가 없음 
+    // off_t parent_offset = leaf->parent_offset;
+    // page* parent = load_page(parent_offset);
+    // //next는 left, leaf 둘 다 유지. leaf에 아직 pair 넣은 거 아니라서 옮길 필요가 읎음. 
+    // int left_index = get_left_index(parent, left_sibling);
+    // if (left_index + 1 < parent->num_of_keys) {
+    //     parent->b_f[left_index + 1].key = leaf->records[0].key;
+    // } else if (left_index + 1 == parent->num_of_keys) {
+    //     parent->b_f[left_index].key = leaf->records[0].key;
+    // }
+    pwrite(fd,left_sibling,sizeof(page),left_sibling_offset);
+    // pwrite(fd,parent, sizeof(page),parent_offset);
+    return root;
 }
-page * leaf_right_rotation(page * root, off_t leaf, page* leaf, off_t right_sibling_offset, page * right_sibling, record pair){}
+page * leaf_right_rotation(page * root, off_t leaf_offset, page* leaf, off_t right_sibling_offset, page * right_sibling, record pair){
+    
+    
+    for(int i=right_sibling->num_of_keys; i>0; i--){
+        right_sibling->records[i]=right_sibling->records[i-1];
+    }
+    right_sibling->records[0]=pair;
+    right_sibling->num_of_keys++;
 
-page * internal_left_rotation(){}
-page * internal_right_rotation(){}
+    //todo 아직 넣기 전이라서 parent를 고쳐줄 필요가 없음 
+    // off_t parent_offset = leaf->parent_offset;
+    // page* parent = load_page(parent_offset);
+    // int right_index = get_left_index(parent, leaf);
+    // if (right_index + 1 < parent->num_of_keys) {
+    //     parent->b_f[right_index + 1].key = right_sibling->records[0].key;
+    // } else if (right_index < parent->num_of_keys) {
+    //     parent->b_f[right_index].key = right_sibling->records[0].key;
+    // }
+    pwrite(fd,right_sibling,sizeof(page),right_sibling_offset);
+    // pwrite(fd,parent, sizeof(page),parent_offset); 
+    return root;
+}
+
+page * internal_left_rotation(page * root, off_t left_sibling_offset, page * left_sibling, off_t node_offset, page* node, int64_t key, off_t pointer){
+    left_sibling->b_f[left_sibling->num_of_keys].key=key;
+    left_sibling->b_f[left_sibling->num_of_keys].p_offset=pointer;
+    left_sibling->num_of_keys++;
+    //todo 아직 넣기 전이라서 parent를 고쳐줄 필요가 없음 
+    // off_t parent_offset = node->parent_offset;
+    // page* parent = load_page(parent_offset);
+
+    
+    // int left_index = get_left_index(parent, left_sibling);
+    // if (left_index + 1 < parent->num_of_keys) {
+    //     parent->b_f[left_index + 1].key = ;
+    // } else if (left_index + 1 == parent->num_of_keys) {
+    //     parent->b_f[left_index].key = key;
+    // }
+    pwrite(fd,left_sibling,sizeof(page),left_sibling_offset);
+    // pwrite(fd,parent, sizeof(page),parent_offset);
+    return root;
+}
+page * internal_right_rotation(page * root, off_t node_offset, page* node, off_t right_sibling_offset, page * right_sibling, int64_t key, off_t pointer){
+    for(int i=right_sibling->num_of_keys; i>0; i--){
+        right_sibling->b_f[i].key=right_sibling->b_f[i-1].key;
+        right_sibling->b_f[i].p_offset=right_sibling->b_f[i-1].p_offset;
+    }
+    right_sibling->b_f[0].p_offset=pointer;
+    right_sibling->b_f[0].key=key;
+    right_sibling->num_of_keys++;
+    pwrite(fd,right_sibling,sizeof(page),right_sibling_offset);
+    return root;
+}
 
 //! record 만든 거 start_new_file에서 저장 
 //todo disk 쓰기 작업 있음!! 다른 것도 다 disk 쓰기 작업 넣어야 함...
@@ -613,7 +697,6 @@ int db_insert(int64_t key, char * value) {
 
     //제일 먼저 그 node에 넣을 공간 있는 지 확인
     //공간 있으면 leaf node니까 leaf에 넣기...
-    off_t leaf_offset=find_offset(key);
     if(leaf->num_of_keys<LEAF_MAX-1){
         leaf=insert_into_leaf(leaf,key,pair);
         //new page 함수 참고...
@@ -629,7 +712,6 @@ int db_insert(int64_t key, char * value) {
     off_t right_sibling_offset = find_right_sibling(leaf, leaf_offset, &is_right_sibling);
     page * left_sibling=load_page(left_sibling_offset);
     page * right_sibling=load_page(right_sibling_offset);
-    page* parent = load_page(leaf->p_offset);
 
     //todo 왼쪽 존재하면 key rotation 가능한 지 확인 가능하면 수행하고 return, 
     //todo 불가능하고 오른쪽 존재하면 key rotation 가능여부 확인. 가능하면 수행하고 return, 불가능이면 split하러...
@@ -637,14 +719,12 @@ int db_insert(int64_t key, char * value) {
     if(is_left_sibling&&left_sibling->num_of_keys<LEAF_MAX-1){
         //old node, old node의 offset, 새로 들어갈 record, root
         leaf_left_rotation(root, left_sibling_offset, left_sibling, leaf_offset, leaf, pair);
-        pwrite(fd,left_sibling,sizeof(page),left_sibling_offset);
-        pwrite(fd,leaf,sizeof(page),leaf_offset);
+        free(left_sibling);
         return 0;
     }
     if(is_right_sibling&&right_sibling->num_of_keys<LEAF_MAX-1){
-        leaf_right_rotation(root, leaf_offset, leaf, right_offset, right_sibling, pair);
-        pwrite(fd,right_sibling,sizeof(page),right_sibling_offset);
-        pwrite(fd,leaf,sizeof(page),leaf_offset);
+        leaf_right_rotation(root, leaf_offset, leaf, right_sibling_offset, right_sibling, pair);
+        free(right_sibling);
         return 0;
     }
     
