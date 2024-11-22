@@ -67,10 +67,10 @@ void start_new_file(record rec);
 char * db_find(int64_t key);
 int db_insert(int64_t key, char * value);
 int db_delete(int64_t key);
-0917
+
 page * find_leaf(off_t root, int key);
 off_t find_offset(int64_t key);
-record make_record(int64_t key, int value);
+record make_record(int64_t key, char * value);
 int get_left_index(page* parent, off_t left_offset);
 page * insert_into_new_root(page* left, off_t left_offset, int key, page* right, off_t right_offset);
 page * insert_into_node(page * root, page * page, int left_index, int64_t new_key, off_t new_offset);
@@ -78,9 +78,6 @@ page * insert_into_leaf(page * leaf, int64_t key, record pair);
 page * insert_into_parent(page * root, page * origin_child, off_t origin_child_offset, int64_t key, page* new_child, off_t new_child_offset);
 page * insert_into_node_after_splitting(page * root, off_t old_node_offset, page * old_node, int left_index, int64_t new_key, off_t new_pointer);
 page * insert_into_leaf_after_splitting(page * root, page * leaf, int64_t key, record pair);
-off_t find_left_sibling(page * node, off_t node_offset, bool* is_left_sibling);
-off_t find_right_sibling(page * node, off_t node_offset, bool* is_right_sibling);
-page * leaf_left_rotation(page * root, off_t left_sibling_offset, page* left_sibling, off_t leaf_offset, page * leaf, record pair);
 page * leaf_right_rotation(page * root, off_t leaf_offset, page* leaf, off_t right_sibling_offset, page * right_sibling, record pair);
 page * internal_left_rotation(page * root, off_t left_sibling_offset, page * left_sibling, off_t node_offset, page* node, int64_t key, off_t pointer);
 page * internal_right_rotation(page * root, off_t node_offset, page* node, off_t right_sibling_offset, page * right_sibling, int64_t key, off_t pointer);
