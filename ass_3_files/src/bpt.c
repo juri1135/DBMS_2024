@@ -83,6 +83,7 @@ int originopen_table(char * pathname) {
     }
     else return -1;
 }
+
 //reset page. reset all values to 0. regardless of page's type.  
 //reset한 페이지를 reset하고자 하는 page의 off에 적는다. 기존 page 값을 reset하는 게 아니라 reset한 page를 그 자리에 저장. 
 //적고 reset page는 free 시킨다. it is not free page. just reset for storing new data in page
@@ -97,6 +98,7 @@ void reset(off_t off) {
     free(reset);
     return;
 }
+
 //reset page and set free page. but it is not controlled by header page. 
 //it is used to alloc new page
 void freetouse(off_t fpo) {
@@ -121,7 +123,7 @@ void usetofree(off_t wbf) {
     pwrite(fd, utf, sizeof(page), wbf);
     free(utf);
     hp->fpo = wbf;
-    pwrite(fd, hp, sizeof(hp), 0);
+    pwrite(fd, hp, sizeof(H_P), 0);
     free(hp);
     hp = load_header(0);
     return;
@@ -141,7 +143,7 @@ off_t new_page() {
         //free page's parent_page_offset points to next free page.
         hp->fpo = np->parent_page_offset;
         //store data to disk. 
-        pwrite(fd, hp, sizeof(hp), 0);
+        pwrite(fd, hp, sizeof(H_P), 0);
         free(hp);
         hp = load_header(0);
         //header's info is changed. so update data to disk and reload data from disk. => header info in memory maintain cur state
@@ -559,7 +561,7 @@ page * leaf_right_rotation(page * root,off_t leaf_offset, page * leaf, off_t rig
         insertion_index++;
 
     //기존 leaf node의 record들을 임시 record에 저장하는데, 들어 갈 자리는 비워놓고 저장.
-    int i=0, j=0;
+    int i,j;
     for (i = 0, j = 0; i < leaf->num_of_keys; i++, j++) {
         if (j == insertion_index) j++; 
         temp_records[j] = leaf->records[i];
@@ -568,7 +570,7 @@ page * leaf_right_rotation(page * root,off_t leaf_offset, page * leaf, off_t rig
 
     leaf->num_of_keys = 0;
     //0~num_of_keys-1까지 채워
-    for (i = 0; i <leaf->num_of_keys; i++) {
+    for (i = 0; i <leaf->LEAF_MAX; i++) {
         leaf->records[i] = temp_records[i];
         leaf->num_of_keys++;
     }
@@ -664,6 +666,362 @@ int db_insert(int64_t key, char * value) {
     }
     free(leaf);
     return 0;
+}
+
+node * remove_entry_from_node(node * n, int key, node * pointer) {
+
+    int i, num_pointers;
+
+    // Remove the key and shift other keys accordingly.
+    i = 0;
+    while (n->keys[i] != key)
+        i++;
+    for (++i; i < n->num_keys; i++)
+        n->keys[i - 1] = n->keys[i];
+
+    // Remove the pointer and shift other pointers accordingly.
+    // First determine number of pointers.
+    num_pointers = n->is_leaf ? n->num_keys : n->num_keys + 1;
+    i = 0;
+    while (n->pointers[i] != pointer)
+        i++;
+    for (++i; i < num_pointers; i++)
+        n->pointers[i - 1] = n->pointers[i];
+
+
+    // One key fewer.
+    n->num_keys--;
+
+    // Set the other pointers to NULL for tidiness.
+    // A leaf uses the last pointer to point to the next leaf.
+    if (n->is_leaf)
+        for (i = n->num_keys; i < order - 1; i++)
+            n->pointers[i] = NULL;
+    else
+        for (i = n->num_keys + 1; i < order; i++)
+            n->pointers[i] = NULL;
+
+    return n;
+}
+
+
+//이 함수는 삭제 작업 수행할 때 leaf에서 지워지고 재귀적으로 root까지 타고 가서 root에서도 지워야 할 일이 생길 때
+//그 때 호출됨. 그거 아니면 처음부터 root가 leaf인 상태일 때... 
+page * adjust_root(off_t root_offset) {
+    H_P *hp = load_header(0);
+    
+//root에서 지운 후에 key 남아 있으면 ㄱㅊ 진행시켜
+    page * root=load_page(root_offset);
+    if (root->num_keys > 0)
+        return root;
+
+//root에서 지운 후에 key가 안 남아 있다면 일단
+//root가 자식이 있었다면?? 첫 번째 자식한테 물려줘 root 직위를
+    
+    if (!root->is_leaf) {
+        //todo new_root에 root의 첫 번째 자식 덮어 씌우고, 첫 번째 자식 자리에 update한 new_root 저장하고, 헤더에 root를 첫 번째 자식으로 지정
+        page * new_root=load_page(root->next_offset);
+        new_root->parent_page_offset= 0;
+        hp->rpo = root->next_offset;
+        pwrite(fd,new_root, sizeof(page),root->next_offset);
+        usetofree(root_offset);
+        pwrite(fd, hp, sizeof(H_P), 0);
+        free(hp);
+        free(root);
+        free(new_root);
+        new_root=load_page(root->next_offset);
+        return new_root;
+    }
+
+//만약 자식이 없었다면 root를 없애
+
+    else{
+        hp->rpo=0;
+        root=NULL;
+        usetofree(root_offset);
+        pwrite(fd, hp, sizeof(H_P), 0);
+        free(hp);
+        return root;
+    }
+}
+
+
+/* Coalesces a node that has become
+ * too small after deletion
+ * with a neighboring node that
+ * can accept the additional entries
+ * without exceeding the maximum.
+ */
+node * coalesce_nodes(node * root, node * n, node * neighbor, int neighbor_index, int k_prime) {
+
+    int i, j, neighbor_insertion_index, n_end;
+    node * tmp;
+
+    /* Swap neighbor with node if node is on the
+     * extreme left and neighbor is to its right.
+     */
+
+    if (neighbor_index == -1) {
+        tmp = n;
+        n = neighbor;
+        neighbor = tmp;
+    }
+
+    /* Starting point in the neighbor for copying
+     * keys and pointers from n.
+     * Recall that n and neighbor have swapped places
+     * in the special case of n being a leftmost child.
+     */
+
+    neighbor_insertion_index = neighbor->num_keys;
+
+    /* Case:  nonleaf node.
+     * Append k_prime and the following pointer.
+     * Append all pointers and keys from the neighbor.
+     */
+
+    if (!n->is_leaf) {
+
+        /* Append k_prime.
+         */
+
+        neighbor->keys[neighbor_insertion_index] = k_prime;
+        neighbor->num_keys++;
+
+
+        n_end = n->num_keys;
+
+        for (i = neighbor_insertion_index + 1, j = 0; j < n_end; i++, j++) {
+            neighbor->keys[i] = n->keys[j];
+            neighbor->pointers[i] = n->pointers[j];
+            neighbor->num_keys++;
+            n->num_keys--;
+        }
+
+        /* The number of pointers is always
+         * one more than the number of keys.
+         */
+
+        neighbor->pointers[i] = n->pointers[j];
+
+        /* All children must now point up to the same parent.
+         */
+
+        for (i = 0; i < neighbor->num_keys + 1; i++) {
+            tmp = (node *)neighbor->pointers[i];
+            tmp->parent = neighbor;
+        }
+    }
+
+    /* In a leaf, append the keys and pointers of
+     * n to the neighbor.
+     * Set the neighbor's last pointer to point to
+     * what had been n's right neighbor.
+     */
+
+    else {
+        for (i = neighbor_insertion_index, j = 0; j < n->num_keys; i++, j++) {
+            neighbor->keys[i] = n->keys[j];
+            neighbor->pointers[i] = n->pointers[j];
+            neighbor->num_keys++;
+        }
+        neighbor->pointers[order - 1] = n->pointers[order - 1];
+    }
+
+    root = delete_entry(root, n->parent, k_prime, n);
+    free(n->keys);
+    free(n->pointers);
+    free(n); 
+    return root;
+}
+
+
+/* Redistributes entries between two nodes when
+ * one has become too small after deletion
+ * but its neighbor is too big to append the
+ * small node's entries without exceeding the
+ * maximum
+ */
+node * redistribute_nodes(node * root, node * n, node * neighbor, int neighbor_index, 
+        int k_prime_index, int k_prime) {  
+
+    int i;
+    node * tmp;
+
+    /* Case: n has a neighbor to the left. 
+     * Pull the neighbor's last key-pointer pair over
+     * from the neighbor's right end to n's left end.
+     */
+
+    if (neighbor_index != -1) {
+        if (!n->is_leaf)
+            n->pointers[n->num_keys + 1] = n->pointers[n->num_keys];
+        for (i = n->num_keys; i > 0; i--) {
+            n->keys[i] = n->keys[i - 1];
+            n->pointers[i] = n->pointers[i - 1];
+        }
+        if (!n->is_leaf) {
+            n->pointers[0] = neighbor->pointers[neighbor->num_keys];
+            tmp = (node *)n->pointers[0];
+            tmp->parent = n;
+            neighbor->pointers[neighbor->num_keys] = NULL;
+            n->keys[0] = k_prime;
+            n->parent->keys[k_prime_index] = neighbor->keys[neighbor->num_keys - 1];
+        }
+        else {
+            n->pointers[0] = neighbor->pointers[neighbor->num_keys - 1];
+            neighbor->pointers[neighbor->num_keys - 1] = NULL;
+            n->keys[0] = neighbor->keys[neighbor->num_keys - 1];
+            n->parent->keys[k_prime_index] = n->keys[0];
+        }
+    }
+
+    /* Case: n is the leftmost child.
+     * Take a key-pointer pair from the neighbor to the right.
+     * Move the neighbor's leftmost key-pointer pair
+     * to n's rightmost position.
+     */
+
+    else {  
+        if (n->is_leaf) {
+            n->keys[n->num_keys] = neighbor->keys[0];
+            n->pointers[n->num_keys] = neighbor->pointers[0];
+            n->parent->keys[k_prime_index] = neighbor->keys[1];
+        }
+        else {
+            n->keys[n->num_keys] = k_prime;
+            n->pointers[n->num_keys + 1] = neighbor->pointers[0];
+            tmp = (node *)n->pointers[n->num_keys + 1];
+            tmp->parent = n;
+            n->parent->keys[k_prime_index] = neighbor->keys[0];
+        }
+        for (i = 0; i < neighbor->num_keys - 1; i++) {
+            neighbor->keys[i] = neighbor->keys[i + 1];
+            neighbor->pointers[i] = neighbor->pointers[i + 1];
+        }
+        if (!n->is_leaf)
+            neighbor->pointers[i] = neighbor->pointers[i + 1];
+    }
+
+    /* n now has one more key and one more pointer;
+     * the neighbor has one fewer of each.
+     */
+
+    n->num_keys++;
+    neighbor->num_keys--;
+
+    return root;
+}
+
+
+/* Deletes an entry from the B+ tree.
+ * Removes the record and its key and pointer
+ * from the leaf, and then makes all appropriate
+ * changes to preserve the B+ tree properties.
+ */
+node * delete_entry( node * root, node * n, int key, void * pointer ) {
+
+    int min_keys;
+    node * neighbor;
+    int neighbor_index;
+    int k_prime_index, k_prime;
+    int capacity;
+
+    // Remove key and pointer from node.
+
+    n = remove_entry_from_node(n, key, (node *)pointer);
+    //key가 존재하는 node... 저 node에서 key, value 지워줘라 
+    /* Case:  deletion from the root. 
+     */
+
+    if (n == root) 
+        return adjust_root(root);
+
+
+    /* Case:  deletion from a node below the root.
+     * (Rest of function body.)
+     */
+
+    /* Determine minimum allowable size of node,
+     * to be preserved after deletion.
+     */
+
+    min_keys = n->is_leaf ? cut(order - 1) : cut(order) - 1;
+
+    /* Case:  node stays at or above minimum.
+     * (The simple case.)
+     */
+
+    if (n->num_keys >= min_keys)
+        return root;
+
+    /* Case:  node falls below minimum.
+     * Either coalescence or redistribution
+     * is needed.
+     */
+
+    /* Find the appropriate neighbor node with which
+     * to coalesce.
+     * Also find the key (k_prime) in the parent
+     * between the pointer to node n and the pointer
+     * to the neighbor.
+     */
+
+    neighbor_index = get_neighbor_index( n );
+    k_prime_index = neighbor_index == -1 ? 0 : neighbor_index;
+    k_prime = n->parent->keys[k_prime_index];
+    neighbor = neighbor_index == -1 ? (node *)n->parent->pointers[1] : 
+        (node *)n->parent->pointers[neighbor_index];
+
+    capacity = n->is_leaf ? order : order - 1;
+
+    /* Coalescence. */
+
+    if (neighbor->num_keys + n->num_keys < capacity)
+        return coalesce_nodes(root, n, neighbor, neighbor_index, k_prime);
+
+    /* Redistribution. */
+
+    else
+        return redistribute_nodes(root, n, neighbor, neighbor_index, k_prime_index, k_prime);
+}
+
+
+
+/* Master deletion function.
+ */
+node * db_delete(node * root, int key) {
+
+    node * key_leaf;
+    record * key_record;
+
+    key_record = find(root, key, false);
+    key_leaf = find_leaf(root, key, false);
+    if (key_record != NULL && key_leaf != NULL) {
+        root = delete_entry(root, key_leaf, key, key_record);
+        free(key_record);
+    }
+    return root;
+}
+
+
+void destroy_tree_nodes(node * root) {
+    int i;
+    if (root->is_leaf)
+        for (i = 0; i < root->num_keys; i++)
+            free(root->pointers[i]);
+    else
+        for (i = 0; i < root->num_keys + 1; i++)
+            destroy_tree_nodes((node *)root->pointers[i]);
+    free(root->pointers);
+    free(root->keys);
+    free(root);
+}
+
+
+node * destroy_tree(node * root) {
+    destroy_tree_nodes(root);
+    return NULL;
 }
 
 
