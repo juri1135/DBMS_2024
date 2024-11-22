@@ -425,7 +425,7 @@ page * insert_into_parent(page * root, page * origin_child, off_t origin_child_o
 
 
 
-//이거 지금 수정해야 함 
+
 //! left_index가 old_node에서 key, right 들어갈 자리. key는 leftmost가 될 수 없다. 새로 들어온 게 부모의 방향키보다 크거나 같아야 하는데
 //! 같으면 중복이라 insert 안 되고 크면 leftmost 불가능임. leaf는 dense라서 무조건 방향키랑 동일한 값을 갖고 있어야 함. 
 //! 새 page 만들고, old page의 left_index+1에 new key랑 new offset 넣고 남은 건 new, old page에 나눠 저장 
@@ -550,7 +550,7 @@ page * insert_into_leaf_after_splitting(page * root, page * leaf, int64_t key, r
 
     //새 leaf node의 첫 번째 key가 두 leaf node의 방향key가 된다.
     new_key = new_leaf->records[0].key; 
-    root= insert_into_parent(root, leaf,leaf_offset, new_key, new_leaf,new_leaf_offset);
+    root= insert_into_pa0917rent(root, leaf,leaf_offset, new_key, new_leaf,new_leaf_offset);
     // TODO:pwrite!!
     free(new_leaf);
 
