@@ -31,7 +31,11 @@ int main(){
             case 'q':
                 while (getchar() != (int)'\n');
                 return EXIT_SUCCESS;
-                break;   
+                break;  
+                //p 돌릴 땐 max값 4 정도로 수정해서 돌려보기..!!!! 
+            case 'p':
+                print_bpt();
+                break;
 
         }
         while (getchar() != (int)'\n');

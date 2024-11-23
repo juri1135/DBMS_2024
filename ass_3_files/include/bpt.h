@@ -68,6 +68,8 @@ char * db_find(int64_t key);
 int db_insert(int64_t key, char * value);
 int db_delete(int64_t key);
 
+void print_keys(off_t page_offset, int depth);
+void print_bpt();
 page * find_leaf(off_t root, int key);
 off_t find_offset(int64_t key);
 record make_record(int64_t key, char * value);
