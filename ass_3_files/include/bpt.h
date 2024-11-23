@@ -84,7 +84,11 @@ page * leaf_right_rotation(page * root, off_t leaf_offset, page* leaf, off_t rig
 page * internal_left_rotation(page * root, off_t left_sibling_offset, page * left_sibling, off_t node_offset, page* node, int64_t key, off_t pointer);
 page * internal_right_rotation(page * root, off_t node_offset, page* node, off_t right_sibling_offset, page * right_sibling, int64_t key, off_t pointer);
 
-
+page * remove_entry_from_node(page * n, off_t n_offset,int key);
+page * adjust_root(page * root);
+page * coalesce_nodes(page * root, page * n, off_t n_offset, page * neighbor, off_t neighbor_offset, int neighbor_index, int k_prime);
+page * redistribute_nodes(page * root, page * n, off_t n_offset, page * neighbor, off_t neighbor_offset, int neighbor_index, int k_prime_index, int k_prime);
+page * delete_entry(page * root, off_t n_offset, int key);
 
 #endif /* __BPT_H__*/
 

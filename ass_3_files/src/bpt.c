@@ -14,7 +14,7 @@ void print_bpt() {
     }
 
     printf("B+ Tree keys:\n");
-    printf("hp->rpo = %lld\n", hp->rpo);
+    printf("hp->rpo = %ld\n", hp->rpo);
     print_keys(hp->rpo, 0);
 }
 
@@ -636,8 +636,8 @@ page * insert_into_leaf_after_splitting(page * root, page * leaf, int64_t key, r
 }
 
 off_t common_parent(page * left, off_t left_offset, page * right, off_t right_offset){
-    off_t leftparent_offset=leaf->parent_page_offset;
-    off_t rightparent_offset=right_sibling->parent_page_offset;
+    off_t leftparent_offset=left->parent_page_offset;
+    off_t rightparent_offset=right->parent_page_offset;
     page * leftparent=load_page(leftparent_offset);
     page * rightparent=load_page(rightparent_offset);
     while(leftparent_offset!=rightparent_offset){
@@ -649,7 +649,7 @@ off_t common_parent(page * left, off_t left_offset, page * right, off_t right_of
     if(leftparent_offset==rightparent_offset){
         return leftparent_offset;
     }
-    return NULL;
+    return -1;
 }
 
 //! return root할 때 다 disk에 저장하고, root 다시 load해서 보내야 함. 
@@ -672,7 +672,7 @@ page * leaf_right_rotation(page * root,off_t leaf_offset, page * leaf, off_t rig
 
     leaf->num_of_keys = 0;
     //0~num_of_keys-1까지 채워
-    for (i = 0; i <leaf->LEAF_MAX; i++) {
+    for (i = 0; i <LEAF_MAX; i++) {
         leaf->records[i] = temp_records[i];
         leaf->num_of_keys++;
     }
@@ -688,6 +688,7 @@ page * leaf_right_rotation(page * root,off_t leaf_offset, page * leaf, off_t rig
 
     //todo leaf, right 부모 조정
     off_t parent=common_parent(leaf, leaf_offset,right_sibling,right_sibling_offset);
+    if(parent==-1) printf("공통 부모 없음\n");
     page * common_p=load_page(parent);
     insertion_index=0;
     while(insertion_index<common_p->num_of_keys&&common_p->b_f[insertion_index].key<key){
@@ -695,7 +696,7 @@ page * leaf_right_rotation(page * root,off_t leaf_offset, page * leaf, off_t rig
     }
     common_p->b_f[insertion_index].key=right_sibling->records[0].key;
     
-    pwrite(fd,common_p,sizeof(page),rightparent_offset);
+    pwrite(fd,common_p,sizeof(page),parent);
     return root;
 }
 
@@ -776,7 +777,8 @@ page * remove_entry_from_node(page * n, off_t n_offset,int key) {
         }
         n->num_of_keys--;
         for(i=n->num_of_keys; i<LEAF_MAX; i++){
-            n->records[i]=NULL;
+            n->records[i].key=-1;
+            n->records[i].value[0]='\0';
         }
         pwrite(fd,n,sizeof(page),n_offset);
         return n;
@@ -794,8 +796,8 @@ page * remove_entry_from_node(page * n, off_t n_offset,int key) {
             }
             n->num_of_keys--;
             for(i=n->num_of_keys; i<INTERNAL_MAX; i++){
-                n->b_f[i].key=NULL;
-                n->b_f[i].p_offset=NULL;
+                n->b_f[i].key=-1;
+                n->b_f[i].p_offset=-1;
             }
             pwrite(fd,n,sizeof(page),n_offset);
             return n;
@@ -811,8 +813,8 @@ page * remove_entry_from_node(page * n, off_t n_offset,int key) {
             }
             n->num_of_keys--;
             for(i=n->num_of_keys; i<INTERNAL_MAX; i++){
-                n->b_f[i].key=NULL;
-                n->b_f[i].p_offset=NULL;
+                n->b_f[i].key=-1;
+                n->b_f[i].p_offset=-1;
             }
             pwrite(fd,n,sizeof(page),n_offset);
             return n;
@@ -867,10 +869,10 @@ page * adjust_root(page * root) {
  * without exceeding the maximum.
  */
 
-page * coalesce_nodes(page * root, page * n, off_t p_offset,page * neighbor, off_t neighbor_offset, int neighbor_index, int k_prime) {
+page * coalesce_nodes(page * root, page * n, off_t n_offset, page * neighbor, off_t neighbor_offset, int neighbor_index, int k_prime) {
     //n이 leftmost일 때, neighbor가 leftmost일 때, leaf, internal일 때 고려해야 함 
     //근데 swap해서 무조건 n이 오른쪽에 가게 해놨으니... leaf, internal만 고려하면 됨. 
-    
+    //만약 오른쪽 형제와 merge하는 거면 n이 right, neighbor가 left로 고정. 
     int i, j, neighbor_insertion_index, n_end;
     page * tmp;
 
@@ -888,7 +890,7 @@ page * coalesce_nodes(page * root, page * n, off_t p_offset,page * neighbor, off
         //n이 internal이라면, 일단 neigbor의 가장 오른쪽 key가 빈 상태니까 부모의 방향키인인 k_prime 넣어주기
         //그리고 n에서 하나씩 갖고 와...
 
-        neighbor->keys[neighbor_insertion_index] = k_prime;
+        neighbor->b_f[neighbor_insertion_index].key = k_prime;
         neighbor->num_of_keys++;
         n_end = n->num_of_keys;
 
@@ -933,16 +935,16 @@ page * coalesce_nodes(page * root, page * n, off_t p_offset,page * neighbor, off
  * small node's entries without exceeding the
  * maximum
  */
-node * redistribute_nodes(node * root, node * n, node * neighbor, int neighbor_index, int k_prime_index, int k_prime) {  
-
+page * redistribute_nodes(page * root, page * n, off_t n_offset, page * neighbor, off_t neighbor_offset, int neighbor_index, int k_prime_index, int k_prime) {  
+    //여기선 node가 삭제된 게 아니라서 직속 부모 외에는 key값 수정 안 해줘도 됨. 재귀적으로 수행할 필요 없음. 
     int i;
-    node * tmp;
-
+    page * tmp;
+    page * parent=load_page(n->parent_page_offset);
     /* Case: n has a neighbor to the left. 
      * Pull the neighbor's last key-pointer pair over
      * from the neighbor's right end to n's left end.
      */
-
+    //n이 leftmost가 아닐 때. 
     if (neighbor_index != -2) {
         //n이 leaf라면 n을 오른쪽으로 한 칸씩 밀고, neighbor의 마지막 record 갖고 오고 parent의 방향키를 n의 0번째 key로
         if(n->is_leaf){
@@ -950,31 +952,27 @@ node * redistribute_nodes(node * root, node * n, node * neighbor, int neighbor_i
                 n->records[i]=n->records[i-1];
             }
             n->records[0]=neighbor->records[neighbor->num_of_keys-1];
-            n->num_of_keys++;
-            neighbor->records[num_of_keys-1]=NULL;
-            neighbor->num_of_keys--;
-            //todo 부모 조정 
+            for(int i=n->num_of_keys-1; i<LEAF_MAX; i++){
+                neighbor->records[i].key=-1;
+                neighbor->records[i].value[0]='\0';
+            }
+            //이 때는 바꾼 후 n의 0번 째가 필요
+            parent->b_f[k_prime_index].key=n->records[0].key;
         }
-        if (!n->is_leaf)
-            n->pointers[n->num_of_keys + 1] = n->pointers[n->num_of_keys];
-        
-        for (i = n->num_of_keys; i > 0; i--) {
-            n->keys[i] = n->keys[i - 1];
-            n->pointers[i] = n->pointers[i - 1];
-        }
-        if (!n->is_leaf) {
-            n->pointers[0] = neighbor->pointers[neighbor->num_of_keys];
-            tmp = (node *)n->pointers[0];
-            tmp->parent = n;
-            neighbor->pointers[neighbor->num_of_keys] = NULL;
-            n->keys[0] = k_prime;
-            n->parent->keys[k_prime_index] = neighbor->keys[neighbor->num_of_keys - 1];
-        }
-        else {
-            n->pointers[0] = neighbor->pointers[neighbor->num_of_keys - 1];
-            neighbor->pointers[neighbor->num_of_keys - 1] = NULL;
-            n->keys[0] = neighbor->keys[neighbor->num_of_keys - 1];
-            n->parent->keys[k_prime_index] = n->keys[0];
+        //n이 internal이라면? 
+        else{
+            for(int i=n->num_of_keys; i>0; i--){
+                n->b_f[i].key=n->b_f[i-1].key;
+                n->b_f[i].p_offset=n->b_f[i].p_offset;
+            }
+            n->b_f[0].p_offset=n->next_offset;
+            n->b_f[0].key=k_prime;
+            parent->b_f[k_prime_index].key=neighbor->b_f[neighbor->num_of_keys-1].key;
+            n->next_offset=neighbor->b_f[neighbor->next_offset-1].p_offset;
+            for(int i=n->num_of_keys-1; i<INTERNAL_MAX; i++){
+                n->b_f[i].key=-1;
+                n->b_f[i].p_offset=-1;
+            }
         }
     }
 
@@ -983,35 +981,44 @@ node * redistribute_nodes(node * root, node * n, node * neighbor, int neighbor_i
      * Move the neighbor's leftmost key-pointer pair
      * to n's rightmost position.
      */
-
+    //n이 leftmost일 때
     else {  
+        //n이 leaf라면
         if (n->is_leaf) {
-            n->keys[n->num_of_keys] = neighbor->keys[0];
-            n->pointers[n->num_of_keys] = neighbor->pointers[0];
-            n->parent->keys[k_prime_index] = neighbor->keys[1];
+            n->records[n->num_of_keys]=neighbor->records[0];
+            for(int i=0; i<neighbor->num_of_keys-1; i++){
+                neighbor->records[i]=neighbor->records[i+1];
+            }
+            for(int i=n->num_of_keys-1; i<LEAF_MAX; i++){
+                neighbor->records[i].key=-1;
+                neighbor->records[i].value[0]='\0';
+            }
+            //이 때는 n을 바꾼 후 0번째가 필요함.
+            parent->b_f[k_prime_index].key=neighbor->records[0].key;
         }
+        //n이 internal일 때
         else {
-            n->keys[n->num_of_keys] = k_prime;
-            n->pointers[n->num_of_keys + 1] = neighbor->pointers[0];
-            tmp = (node *)n->pointers[n->num_of_keys + 1];
-            tmp->parent = n;
-            n->parent->keys[k_prime_index] = neighbor->keys[0];
+            
+            n->b_f[n->num_of_keys].key = k_prime;
+            n->b_f[n->num_of_keys].p_offset = neighbor->next_offset;
+            //이 때는 바꾸기 전의 neighbor 0 번째가 필요함... 바꾸러 갈 때 주고 가~
+            parent->b_f[k_prime_index].key=neighbor->b_f[0].key;
+            neighbor->next_offset=neighbor->b_f[0].p_offset;
+            for(int i=0; i<neighbor->num_of_keys-1; i++){
+                neighbor->b_f[i].key=neighbor->b_f[i+1].key;
+                neighbor->b_f[i].p_offset=neighbor->b_f[i].p_offset;
+            }
+            for(int i=neighbor->num_of_keys-1; i<INTERNAL_MAX; i++){
+                neighbor->b_f[i].key=-1;
+                neighbor->b_f[i].p_offset=-1;
+            }
         }
-        for (i = 0; i < neighbor->num_of_keys - 1; i++) {
-            neighbor->keys[i] = neighbor->keys[i + 1];
-            neighbor->pointers[i] = neighbor->pointers[i + 1];
-        }
-        if (!n->is_leaf)
-            neighbor->pointers[i] = neighbor->pointers[i + 1];
     }
-
-    /* n now has one more key and one more pointer;
-     * the neighbor has one fewer of each.
-     */
-
     n->num_of_keys++;
     neighbor->num_of_keys--;
-
+    pwrite(fd,n,sizeof(page),n_offset);
+    pwrite(fd,neighbor,sizeof(page),neighbor_offset);
+    pwrite(fd,parent,sizeof(page),n->parent_page_offset);
     return root;
 }
 
@@ -1022,6 +1029,7 @@ node * redistribute_nodes(node * root, node * n, node * neighbor, int neighbor_i
  * changes to preserve the B+ tree properties.
  */
 page * delete_entry(page * root, off_t n_offset, int key) {
+    //merge, redistribute 둘 다 무조건 부모 동일한 형제만 검사한다고 가정. 
 
     int min_keys;
     page * neighbor;
@@ -1035,21 +1043,23 @@ page * delete_entry(page * root, off_t n_offset, int key) {
     if (n == root) 
         return adjust_root(root);
 
-    min_keys = n->is_leaf ? cut(LEAF_MAX) : cut(INTERNAL_MAX);
+    min_keys = n->is_leaf ? cut(LEAF_MAX-1) : cut(INTERNAL_MAX);
 
 
     if (n->num_of_keys >= min_keys)
         return root;
     
-    //! n이 leaf든 internal이든 이건 부모 기준으로 나누는 거라서 case 안 나눠도 됨 
+    //! n이 leaf든 internal이든 이건 부모 기준으로 나누는 거라서 case 안 나눠도 됨
+    //이건 왼쪽 형제 보는 코드
+
     //아 여기서 말하는 neighbor index는 n이 leftmost라면 -1이어야 함 
-    
-    neighbor_index =get_left_index( n )-1;
+    neighbor_index =get_left_index(parent, n_offset )-1;
     //n이 leftmost라면 neighbor_index는 -2... neighbor가 leftmost라면 neighbor_most는 -1
     //neighbor index가 -1이라면 k_prime은 0번째, -2여도 0 번째, 그 외는 neighbor+1
-    k_prime_index = neighbor_index==-2 ? 0 : neighbor+1;
+    k_prime_index = neighbor_index==-2 ? 0 : neighbor_index+1;
     k_prime = parent->b_f[k_prime_index].key;
     //n이 leftmost라면 neighbor는 0번째, neighbor가 leftmost라면 neighbor는 next offset, 그 외는 neighbor index
+    off_t neighbor_offset=parent->b_f[neighbor_index].p_offset;
     if(neighbor_index==-2) neighbor=load_page(parent->b_f[0].p_offset);
     else if(neighbor_index==-1) neighbor=load_page(parent->next_offset);
     else neighbor = load_page(parent->b_f[neighbor_index].p_offset);
@@ -1059,10 +1069,30 @@ page * delete_entry(page * root, off_t n_offset, int key) {
 
     if (neighbor->num_of_keys + n->num_of_keys < capacity)
         return coalesce_nodes(root, n, n_offset,neighbor, neighbor_offset,neighbor_index, k_prime);
+    //왼쪽이랑 안 된다면 오른쪽 형제 봐야 함. 근데 이 때 merge 안 돼서 재분배한다고 해도 무조건 왼쪽 형제랑 수행하도록... 
+    //어차피 왼, 오 둘 다 merge 안 되는 거면 둘 다 재분배는 가능함. 그니까 그냥 왼쪽 형제로 통일. 어차피 n이 leftmost일 때는 재분배 함수 안에서 처리함 
+    else{
+        page * right_neighbor;
+        int right_neighbor_index, right_k_prime_index;
+        int64_t right_k_prime;
+        //만약 n이 rightmost라면 neighbor가 out of range... 이 경우엔 이미 왼쪽 형제랑 비교한 상황이라서 무시해도 됨. 
+        //n이 leftmost인 상황도 이미 오른쪽 형제랑 비교한 상황이라 무시해도 됨
+        //n이 leftmost일 때는 0번째랑 비교 완료... n이 rightmost일 때는 오른쪽 형제 없고, 왼쪽 형제랑은 이미 비교한 상태
+        right_neighbor_index =get_left_index( parent,n_offset )+1;
+        if(right_neighbor_index==parent->num_of_keys || right_neighbor_index==0) return  redistribute_nodes(root, n,n_offset, neighbor, neighbor_offset,neighbor_index, k_prime_index, k_prime);
+        //여기서 나올 수 있는 right_neighbor_index의 값은 1부터 num_of_keys-1까지... 
+        right_k_prime_index = right_neighbor_index;
+        right_k_prime = parent->b_f[k_prime_index].key;
+        right_neighbor=load_page(parent->b_f[right_neighbor_index].p_offset);
+        off_t right_neighbor_offset=parent->b_f[right_neighbor_index].p_offset;
+        if (right_neighbor->num_of_keys + n->num_of_keys < capacity) 
+            //이러면 무조건 n이 왼쪽으로 가서... 저 함수 내부에서 case 나눠서 swap하기가 힘듦... 그냥 여기서 swap해서 보내는 걸로.
+            return coalesce_nodes(root, right_neighbor, right_neighbor_offset, n, n_offset,right_neighbor_index, right_k_prime);
+        else return redistribute_nodes(root, n,n_offset, neighbor, neighbor_offset, neighbor_index, k_prime_index, k_prime);
+    }
 
-
-    else
-        return redistribute_nodes(root, n, neighbor, neighbor_index, k_prime_index, k_prime);
+    
+        
 }
 
 
@@ -1092,7 +1122,7 @@ page * delete_entry(page * root, off_t n_offset, int key) {
 
 int db_delete(int64_t key) {
     page * root=load_page(hp->rpo);
-    page * leaf=find_leaf(root,key);
+    page * leaf=find_leaf(hp->rpo,key);
     off_t leaf_offset=find_offset(key);
     if(leaf!=NULL){
         root=delete_entry(root,leaf_offset,key);
