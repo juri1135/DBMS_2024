@@ -36,11 +36,14 @@ void print_keys(off_t page_offset, int depth) {
     
     // 현재 노드의 키 출력
     printf("[");
+    if(!current_page->is_leaf) printf("offt: %ld ",current_page->next_offset);
     for (int i = 0; i < current_page->num_of_keys; i++) {
         if (current_page->is_leaf) {
+            
             printf("%" PRId64, current_page->records[i].key); // 리프 노드
         } else {
             printf("%" PRId64, current_page->b_f[i].key); // 내부 노드
+            printf(" offt: %ld ",current_page->b_f[i].p_offset);
         }
         if (i < current_page->num_of_keys - 1) {
             printf(", ");
@@ -325,7 +328,6 @@ page * find_leaf(off_t root, int key){
     page *c = load_page(hp->rpo);
     //root부터 leaf로 쭉 내려가
     while(!c->is_leaf){
-        printf("c가 아직 internal\n");
          off_t child_offset = 0;
         //internal node라서 일단 key0보다 작으면 next_offset으로 가야 함.
         if (key < c->b_f[0].key) {
@@ -379,7 +381,7 @@ char * db_find(int64_t key) {
 
 //! next 반영한 상태. 이건 leaf node의 offset을 찾는 역할만.
 off_t find_offset(int64_t key){
-    printf("find_offset입니다요\n");
+    // printf("find_offset입니다요\n");
     off_t current_offset = hp->rpo; // 루트 노드의 오프셋
     page *c = load_page(current_offset);
     if(c == NULL) return 0;
@@ -426,11 +428,15 @@ record make_record(int64_t key,  char *value) {
 //! offset 반영. parent b_f 돌면서 pointer가 left_offset과 동일한 index return
 int get_left_index(page* parent, off_t left_offset) {
     printf("get left index입니다요\n");
+    printf("%ld ",parent->next_offset);
+    for(int i=0; i<parent->num_of_keys; i++){
+        printf("%ld %ld ",parent->b_f[i].key, parent->b_f[i].p_offset);
+    }
     //parent에서 left가 존재하는 index를 반환. 
     int left_index = 0;
     // in-memory에서의 get_left_index를 page 구조에 맞게 변형...
     if(parent->next_offset==left_offset){
-        printf("leftmost네용/n");
+        printf("leftmost네용\n");
         return -1;
     }
     while (left_index < parent->num_of_keys &&  parent->b_f[left_index].p_offset != left_offset) {
@@ -550,6 +556,7 @@ page * insert_into_parent(page * root, page * origin_child, off_t origin_child_o
     //parent에서 기존 노드의 index를 가져와 
     //next origin_key origin_node key new_node 형식으로 가야 함 
     //left_index는 0. 
+    printf("parent offt:%ld origin offt: %ld\n",origin_child->parent_page_offset,origin_child_offset);
     left_index = get_left_index(parent, origin_child_offset);
 
     //부모에 자리 있으면 parent record의 v(left_index+1)에 key, p(left_index+1)에 new_node 삽입 
@@ -643,9 +650,9 @@ page * insert_into_node_after_splitting(page * root, off_t old_node_offset, page
         new_node->b_f[k].p_offset = temp_pointers[i];
         new_node->b_f[k].key = temp_keys[i];
         new_node->num_of_keys++;
-        child=load_page(new_node->b_f[i].p_offset);
-        child->parent_page_offset=old_node_offset;
-        pwrite(fd,child,sizeof(page),new_node->b_f[i].p_offset);
+        child=load_page(new_node->b_f[k].p_offset);
+        child->parent_page_offset=new_node_offset;
+        pwrite(fd,child,sizeof(page),new_node->b_f[k].p_offset);
         free(child);
     }
     child=load_page(new_node->next_offset);
@@ -711,7 +718,7 @@ page * insert_into_leaf_after_splitting(page * root, page * leaf, int64_t key, r
     //아까 비워둔 자리에 새로 insert하는 record 저장
     temp_records[insertion_index] = pair;
     printf("temp: ");
-    for(int i=0; i<LEAF_MAX; i++){
+    for(int i=0; i<=LEAF_MAX; i++){
         printf("%ld ",temp_records[i].key);
     }
     printf("\n");
@@ -719,6 +726,7 @@ page * insert_into_leaf_after_splitting(page * root, page * leaf, int64_t key, r
     split = cut(LEAF_MAX+1); 
     //기존 leaf node 초기화하고 다시 record 저장해야 해서 0으로 설정하고 절반까지 계속 채워
     leaf->num_of_keys = 0;
+    page * child;
     //0~split-1 까지 채워 
     for (i = 0; i <split; i++) {
         leaf->records[i] = temp_records[i];
@@ -751,52 +759,73 @@ page * insert_into_leaf_after_splitting(page * root, page * leaf, int64_t key, r
 
     return load_page(hp->rpo);
 }
-page * change_parent_key(off_t child_offset, page * child, int64_t key){
-    printf("바꿀 key값: %ld\n",key);
-    page * parent=load_page(child->parent_page_offset);
-    int insertion_index=0;
-    while(insertion_index<parent->num_of_keys&&parent->b_f[insertion_index].p_offset!=child_offset) insertion_index++;
-    parent->b_f[insertion_index].key=key; 
-    pwrite(fd,parent,sizeof(page),child->parent_page_offset);
-    free(parent);
-    return load_page(child->parent_page_offset);
-}
 
-page * common_parent(page * left, off_t left_offset, page * right, off_t right_offset){
+
+off_t common_parent(page * left, off_t left_offset, page * right, off_t right_offset, int64_t key){
+    //이거 그냥 공통 부모 찾아서 공통 부모에서 바꿔야 하는 key index를 바꿀 key값으로 설정하면 됨 
     //초기 부모 offset
     off_t leftparent_offset=left->parent_page_offset;
     off_t rightparent_offset=right->parent_page_offset;
     //초기 부모 page
     page * leftparent=load_page(leftparent_offset);
     page * rightparent=load_page(rightparent_offset);
-    //일단 부모 달라도 key 변경시켜 자식, 자식의 offset 보내. 거기서 첫 번째 key 값으로 방향키 바꿔 
-     change_parent_key(right_offset, right, right->records[0].key);
-    while(leftparent_offset!=rightparent_offset){
-       // 왼쪽 부모 상위 노드로 이동
+    // 공통 부모 찾기
+    off_t left_traversed_offset = left_offset;   // 왼쪽에서 이동한 자식 offset
+    off_t right_traversed_offset = right_offset; // 오른쪽에서 이동한 자식 offset
+
+     while (leftparent_offset != rightparent_offset) {
+        // 왼쪽 부모 상위 노드로 이동
         off_t next_leftparent_offset = leftparent->parent_page_offset;
-        free(leftparent); // 메모리 해제
+        free(leftparent);
         leftparent = load_page(next_leftparent_offset);
+        left_traversed_offset = leftparent_offset; // 현재 부모에서 이동한 자식 offset
         leftparent_offset = next_leftparent_offset;
 
-       // 오른쪽 부모 상위 노드로 이동
+        // 오른쪽 부모 상위 노드로 이동
         off_t next_rightparent_offset = rightparent->parent_page_offset;
-        free(rightparent); // 메모리 해제
+        free(rightparent);
         rightparent = load_page(next_rightparent_offset);
+        right_traversed_offset = rightparent_offset; // 현재 부모에서 이동한 자식 offset
         rightparent_offset = next_rightparent_offset;
-
-        // 오른쪽 부모의 첫 번째 키 변경
-        change_parent_key(rightparent_offset, rightparent, rightparent->b_f[0].key);
     }
-    if(leftparent_offset==rightparent_offset){
+
+    if (leftparent_offset == rightparent_offset) {
+        printf("공통 부모 offset: %ld\n", leftparent_offset);
+        printf("오른쪽 자식 offset: %ld\n", right_traversed_offset);
+        printf("new key: %ld\n", key);
+        leftparent=change_common_parent(leftparent,leftparent_offset,right_traversed_offset, key);
+        pwrite(fd,leftparent,sizeof(page),leftparent_offset);
         free(leftparent);
         free(rightparent);
-        return load_page(leftparent_offset);
+
+        return leftparent_offset; // 공통 부모의 offset 반환
     }
     free(leftparent);
     free(rightparent);
-    return NULL;
+    return -1;
 }
-
+page * change_common_parent(page * parent,off_t parent_offset, off_t child_offset, int64_t key){
+    
+    page * child=load_page(child_offset);
+    printf("공통 부모의 key들 ");
+    for(int i=0; i<parent->num_of_keys; i++){
+        printf("%ld ",parent->b_f[i].key);
+    }
+    int i=0;
+    for(i=0; i<parent->num_of_keys; i++){
+        if(parent->b_f[i].p_offset==child_offset){
+            parent->b_f[i].key=key;
+            break;}
+    }
+    
+    printf("바꾼 후 공통 부모의 key들 ");
+    for(int i=0; i<parent->num_of_keys; i++){
+        printf("%ld ",parent->b_f[i].key);
+    }
+    pwrite(fd,parent,sizeof(page),parent_offset);
+    free(child);
+    return parent;
+}
 //! return root할 때 다 disk에 저장하고, root 다시 load해서 보내야 함. 
 page * leaf_right_rotation(page * root,off_t leaf_offset, page * leaf, off_t right_sibling_offset, page* right_sibling,  record pair){
     //todo leaf, right node에 값 저장...
@@ -832,14 +861,14 @@ page * leaf_right_rotation(page * root,off_t leaf_offset, page * leaf, off_t rig
     pwrite(fd,right_sibling, sizeof(page),right_sibling_offset);
 
     //todo leaf, right 부모 조정 
-    //공통부모까지 가면서 모든 부모에서 자리 찾아서 key를 고쳐줘야 함
-    page * parent=common_parent(leaf, leaf_offset,right_sibling,right_sibling_offset);
-    if(parent==NULL) printf("공통 부모 없음\n");
-    printf("공통 부모의 key들");
-    for(int i=0; i<parent->num_of_keys; i++){
-        printf("%ld ",parent->b_f[i].key);
-    }
+    //공통부모 가서 key 값 교체 필요 
+    off_t parent=common_parent(leaf, leaf_offset,right_sibling,right_sibling_offset,right_sibling->records[0].key);
+    if(parent==-1) printf("공통 부모 없음\n");
+    page * common_p=load_page(parent);
     
+
+    pwrite(fd,common_p,sizeof(page),parent);
+   
     return load_page(hp->rpo);
 }
 
@@ -890,7 +919,7 @@ int db_insert(int64_t key, char * value) {
     //공간 없으면 왼쪽, 오른쪽 sibling 확인해서 공간 있는 지 확인. 
     off_t right_sibling_offset = leaf->next_offset;
     page * right_sibling = load_page(leaf->next_offset);
-    if(right_sibling==NULL) printf("right sibling is null\n");
+    if(right_sibling_offset==0) printf("right sibling is null\n");
     else printf("right sibling's num_of_keys: %d\n",right_sibling->num_of_keys);
     //todo 왼쪽 존재하면 key rotation 가능한 지 확인 가능하면 수행하고 return, 
     //todo 불가능하고 오른쪽 존재하면 key rotation 가능여부 확인. 가능하면 수행하고 return, 불가능이면 split하러...

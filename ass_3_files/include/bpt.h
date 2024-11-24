@@ -83,8 +83,8 @@ page * insert_into_parent(page * root, page * origin_child, off_t origin_child_o
 page * insert_into_node_after_splitting(page * root, off_t old_node_offset, page * old_node, int left_index, int64_t new_key, off_t new_pointer);
 page * insert_into_leaf_after_splitting(page * root, page * leaf, int64_t key, record pair);
 page * leaf_right_rotation(page * root, off_t leaf_offset, page* leaf, off_t right_sibling_offset, page * right_sibling, record pair);
-page * internal_left_rotation(page * root, off_t left_sibling_offset, page * left_sibling, off_t node_offset, page* node, int64_t key, off_t pointer);
-page * internal_right_rotation(page * root, off_t node_offset, page* node, off_t right_sibling_offset, page * right_sibling, int64_t key, off_t pointer);
+off_t common_parent(page * left, off_t left_offset, page * right, off_t right_offset, int64_t key);
+page * change_common_parent(page * parent,off_t parent_offset, off_t child_offset, int64_t key);
 
 page * remove_entry_from_node(page * n, off_t n_offset,int key);
 page * adjust_root(page * root);
