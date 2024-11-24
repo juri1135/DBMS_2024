@@ -487,30 +487,17 @@ page * insert_into_new_root(page* left, off_t left_offset, int key, page* right,
 page * insert_into_node(page * root, page * page, off_t page_offset, int left_index, int64_t new_key, off_t new_offset) {
     int i;
     printf("insert into node입니다요\n");
-    //n이라는 page의 v(left_index+1)에 key, p(left_index+1)에 new_node 삽입 
-    //next v0 p0 v1 p1 구조에서 left_index가 1이라면 next v0 p0 v1 p1 key new_node의 offset
-    //left_index가 0이라면 next v0 p0 key new_node v2 p2
-    //new_node는 origin보단 커야 해서 leftmost가 될 수 없음 
-    //num key부터 left_index+1까지 밀어
-    if(left_index==-1){
-        for (i =page->num_of_keys-1; i >=0; i--) {
-            page->b_f[i+1].key=page->b_f[i].key;
-            page->b_f[i+1].p_offset=page->b_f[i].p_offset;
-        }
-        page->b_f[0].p_offset=page->next_offset;
-        page->next_offset=new_offset;
-        page->b_f[0].key=new_key;
-        page->num_of_keys++;
+    //늘 page가 left, new가 right에 있음 즉 next offset엔 변화가 없음 
+    
+    
+    for (i =page->num_of_keys-1; i > left_index; i--) {
+        page->b_f[i+1].key=page->b_f[i].key;
+        page->b_f[i+1].p_offset=page->b_f[i].p_offset;
     }
-    else{
-        for (i =page->num_of_keys-1; i > left_index; i--) {
-            page->b_f[i+1].key=page->b_f[i].key;
-            page->b_f[i+1].p_offset=page->b_f[i].p_offset;
-        }
-        page->b_f[left_index+1].key =new_key;
-        page->b_f[left_index+1].p_offset = new_offset;
-        page->num_of_keys++;
-    }
+    page->b_f[left_index+1].key =new_key;
+    page->b_f[left_index+1].p_offset = new_offset;
+    page->num_of_keys++;
+    
    printf("%ld parent: ", page_offset);
     for (int i = 0; i < page->num_of_keys; i++) {
         printf("%ld ", page->b_f[i].key);
@@ -563,18 +550,8 @@ page * insert_into_parent(page * root, page * origin_child, off_t origin_child_o
     //LEAF 
     if (parent->num_of_keys < LEAF_MAX ){
         parent= insert_into_node(root, parent, parent_offset,left_index, key, new_child_offset);
-        printf("memory parent: ");
-        printf("num key %d ",parent->num_of_keys);
-        for (int i=0; i<parent->num_of_keys; i++){
-            printf("%ld ",parent->b_f[i].key);
-        }
         pwrite(fd,parent, sizeof(page),parent_offset);
         parent=load_page(parent_offset);
-        printf("\ndisk parent: ");
-        printf("num key %d ",parent->num_of_keys);
-        for (int i=0; i<parent->num_of_keys; i++){
-            printf("%ld ",parent->b_f[i].key);
-        }
         free(parent);
         return load_page(hp->rpo);
     }
@@ -589,7 +566,7 @@ page * insert_into_parent(page * root, page * origin_child, off_t origin_child_o
 
 //! left_index가 old_node에서 key, right 들어갈 자리. key는 leftmost가 될 수 없다. 새로 들어온 게 부모의 방향키보다 크거나 같아야 하는데
 //! 같으면 중복이라 insert 안 되고 크면 leftmost 불가능임. leaf는 dense라서 무조건 방향키랑 동일한 값을 갖고 있어야 함. 
-//! 새 page 만들고, old page의 left_index+1에 new key랑 new offset 넣고 남은 건 new, old page에 나눠 저장 
+//! 새 page 만들고, newpage의 left_index+1에 new key랑 new offset 넣고 남은 건 new, old page에 나눠 저장 
 page * insert_into_node_after_splitting(page * root, off_t old_node_offset, page * old_node, int left_index, int64_t new_key, off_t new_pointer) {
 
     int i, j, split;
@@ -641,6 +618,7 @@ page * insert_into_node_after_splitting(page * root, off_t old_node_offset, page
     }
     child=load_page(old_node->next_offset);
     child->parent_page_offset=old_node_offset;
+    pwrite(fd,child,sizeof(page),old_node->next_offset);
     free(child);
     
     //old_node->next_offset은 유지...
@@ -655,15 +633,16 @@ page * insert_into_node_after_splitting(page * root, off_t old_node_offset, page
         pwrite(fd,child,sizeof(page),new_node->b_f[k].p_offset);
         free(child);
     }
-    child=load_page(new_node->next_offset);
-    child->parent_page_offset=new_node_offset;
-    free(child);
     
-
     //new의 next는 temp[split]의 pointer (부모로 올릴 node가 갖고 있던 pointer)
     new_node->next_offset = temp_pointers[split];
     k_prime = temp_keys[split];
-    
+
+    child=load_page(new_node->next_offset);
+    child->parent_page_offset=new_node_offset;
+    pwrite(fd,child,sizeof(page),new_node->next_offset);
+    free(child);
+
     pwrite(fd,old_node,sizeof(page), old_node_offset);
     pwrite(fd,new_node, sizeof(page),new_node_offset);
 
