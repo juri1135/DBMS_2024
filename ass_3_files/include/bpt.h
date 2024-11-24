@@ -14,8 +14,8 @@
 #include <string.h>
 // #define LEAF_MAX 31
 // #define INTERNAL_MAX 248
-#define LEAF_MAX 3
-#define INTERNAL_MAX 3
+#define LEAF_MAX 2
+#define INTERNAL_MAX 2
 //leaf node에서 node가 갖고 있는 key, record pair
 typedef struct record{
     int64_t key;
