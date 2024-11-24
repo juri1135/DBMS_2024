@@ -36,7 +36,9 @@ int main(){
             case 'p':
                 print_bpt();
                 break;
-
+            case 'r':
+                tree_reset_all();
+                break;
         }
         while (getchar() != (int)'\n');
     }
