@@ -1,4 +1,6 @@
 #include "bpt.h"
+#include <stdio.h>
+#include <stdlib.h>
 //header page. root, free, number of pages
 H_P * hp;
 
@@ -6,7 +8,38 @@ page * rt = NULL; //root is declared as global
 
 int fd = -1; //fd is declared as global
 static int table_counter = 0; 
-
+void print_leaf(){
+    if(hp->rpo==0) return;
+    page * root=load_page(hp->rpo);
+    if(root->is_leaf){
+        fprintf(output_file,"[");
+        for(int i=0; i<root->num_of_keys; i++){
+            fprintf(output_file,"%ld ",root->records[i].key);
+        }
+        fprintf(output_file,"]\n");
+        return;
+    }
+    off_t off=hp->rpo;
+    while (!root->is_leaf){
+        off=root->next_offset;
+        free(root);
+        root=load_page(off);
+    }
+    
+    fprintf(output_file,"%ld: [",off);
+    while(off!=0){
+        off=root->next_offset;
+        root=load_page(off);
+        for(int i=0; i<root->num_of_keys; i++){
+            fprintf(output_file,"%ld,",root->records[i].key);
+        }
+        fprintf(output_file,"\n");
+        free(root);
+        root=load_page(off);
+        
+    }
+    fprintf(output_file,"]\n");
+}
 void print_bpt() {
     if (hp->rpo == 0) {
         printf("Tree is empty.\n");
@@ -104,33 +137,12 @@ H_P * originload_header(off_t off) {
 }
 
 page * load_page(off_t off) {
-    // 페이지 크기만큼 메모리 할당
     page* load = (page*)calloc(1, sizeof(page));
-    if (!load) {
-        perror("Memory allocation failed");
+    if (off % sizeof(page) != 0) printf("load fail : page offset error\n");
+    if (sizeof(page) > pread(fd, load, sizeof(page), off)) {
+
         return NULL;
     }
-
-    // 오프셋 유효성 검사 (선택적 디버깅 출력)
-    if (off % sizeof(page) != 0) {
-        fprintf(stderr, "Load failed: Page offset error. Offset: %ld\n", off);
-        free(load);
-        return NULL;
-    }
-
-    // pread 호출
-    ssize_t read_bytes = pread(fd, load, sizeof(page), off);
-    if (read_bytes < sizeof(page)) {
-        if (read_bytes == -1) {
-            perror("pread failed");
-        } else {
-            fprintf(stderr, "Incomplete read: Expected %lu bytes, got %ld bytes. Offset: %ld\n",
-                    sizeof(page), read_bytes, off);
-        }
-        free(load);
-        return NULL;
-    }
-
     return load;
 }
 page * originload_page(off_t off) {
@@ -257,26 +269,18 @@ off_t new_page() {
     if (hp->fpo != 0) {
         newp = hp->fpo;
         np = load_page(newp);
-        if (np == NULL) {
-            perror("Failed to load free page.");
-            exit(EXIT_FAILURE);
-        }
-        //free page's parent_page_offset points to next free page.
         hp->fpo = np->parent_page_offset;
-        //store data to disk. 
-        pwrite(fd, hp, sizeof(H_P), 0);
+        pwrite(fd, hp, sizeof(hp), 0);
         free(hp);
         hp = load_header(0);
-        //header's info is changed. so update data to disk and reload data from disk. => header info in memory maintain cur state
         free(np);
         freetouse(newp);
         return newp;
     }
     //change previous offset to 0 is needed
     newp = lseek(fd, 0, SEEK_END);
-    //if (newp % sizeof(page) != 0) printf("new page made error : file size error\n");
+    if (newp % sizeof(page) != 0) printf("new page made error : file size error\n");
     reset(newp);
-    //if header doesn't have free page then alloc new page and num of pages increases. 
     hp->num_of_pages++;
     pwrite(fd, hp, sizeof(H_P), 0);
     free(hp);
@@ -297,7 +301,7 @@ int cut(int length) {
 //! disk에 쓰기 작업
 //todo disk에 씀  
 void start_new_file(record rec) {
-    // printf("start_new_file입니다요\n");
+    printf("start_new_file입니다요\n");
     page * root;
     off_t ro;
     ro = new_page();
@@ -315,6 +319,9 @@ void start_new_file(record rec) {
     pwrite(fd, rt, sizeof(page), hp->rpo);
     free(rt);
     rt = load_page(hp->rpo);
+    for(int i=0; i<rt->num_of_keys; i++){
+        printf("%ld\n",rt->records[0].key);
+    }
     //printf("new file is made\n");
 }
 
@@ -346,7 +353,7 @@ page * find_leaf(off_t root, int key){
             child_offset = c->b_f[i-1].p_offset;
             free(c);
             c = load_page(child_offset);
-            if(c==NULL) return NULL;
+            if(child_offset==0) return NULL;
         }
     }
     
@@ -368,11 +375,9 @@ char * db_find(int64_t key) {
             //일치하는 거 찾으면 해당 value 복사
             char *value = strdup(c->records[i].value);
             free(c);
-            printf("value를 찾았움\n");
             return value;
         }
     }
-    printf("value가 없음\n");
     //못 찾으면 null return 
     free(c);
     return NULL;
@@ -384,7 +389,7 @@ off_t find_offset(int64_t key){
     // printf("find_offset입니다요\n");
     off_t current_offset = hp->rpo; // 루트 노드의 오프셋
     page *c = load_page(current_offset);
-    if(c == NULL) return 0;
+    if(current_offset==0) return 0;
     //[next_offset][v0][p0][v1][p1]...[vn-1][pn-1]
     while(!c->is_leaf){
         int i = 0;
@@ -427,24 +432,23 @@ record make_record(int64_t key,  char *value) {
 
 //! offset 반영. parent b_f 돌면서 pointer가 left_offset과 동일한 index return
 int get_left_index(page* parent, off_t left_offset) {
-    printf("get left index입니다요\n");
-    printf("parent의 key 개수 %d\n",parent->num_of_keys);
-    printf("%ld ",parent->next_offset);
-    for(int i=0; i<parent->num_of_keys; i++){
-        printf("%ld %ld ",parent->b_f[i].key, parent->b_f[i].p_offset);
-    }
+    // printf("get left index입니다요\n");
+    // printf("parent의 key 개수 %d\n",parent->num_of_keys);
+    // printf("%ld ",parent->next_offset);
+    // for(int i=0; i<parent->num_of_keys; i++){
+    //     printf("%ld %ld ",parent->b_f[i].key, parent->b_f[i].p_offset);
+    // }
     //parent에서 left가 존재하는 index를 반환. 
     int left_index = 0;
     // in-memory에서의 get_left_index를 page 구조에 맞게 변형...
     if(parent->next_offset==left_offset){
-        printf("leftmost네용\n");
         return -1;
     }
     while (left_index < parent->num_of_keys &&  parent->b_f[left_index].p_offset != left_offset) {
         left_index++;
     }
     if(left_index==parent->num_of_keys) printf("out of range!!!!\n");
-    printf("index는 %d\n",left_index);
+    // printf("index는 %d\n",left_index);
     return left_index;
 }
 
@@ -488,7 +492,7 @@ page * insert_into_new_root(page* left, off_t left_offset, int key, page* right,
 //TODO root가 바뀐 거 아니고 그냥 page node의 값들만 바뀐 거라 page만 저장해주면 됨 (완료)
 page * insert_into_node(page * root, page * page, off_t page_offset, int left_index, int64_t new_key, off_t new_offset) {
     int i;
-    printf("insert into node입니다요\n");
+    // printf("insert into node입니다요\n");
     //늘 page가 left, new가 right에 있음 즉 next offset엔 변화가 없음 
     
     
@@ -500,11 +504,6 @@ page * insert_into_node(page * root, page * page, off_t page_offset, int left_in
     page->b_f[left_index+1].p_offset = new_offset;
     page->num_of_keys++;
     
-   printf("%ld parent: ", page_offset);
-    for (int i = 0; i < page->num_of_keys; i++) {
-        printf("%ld ", page->b_f[i].key);
-    }
-    printf("\n");
     pwrite(fd, page, sizeof(page), page_offset);
     return page;
 }
@@ -524,20 +523,26 @@ page * insert_into_leaf(page * leaf, int64_t key, record pair){
     //넣을 곳 찾았으니 다 넣으면 끝~ 
     leaf->records[insertion_point]=pair;
     leaf->num_of_keys++;
+    off_t leaf_offset=find_offset(leaf->records[0].key);
+    pwrite(fd,leaf,sizeof(page),leaf_offset);
     return leaf;
 }
 
 //! offset 반영... root 호출, index 호출, insert_node, node_split 호출
 //todo root는 callee에서, insert_node는 지금 disk에 안 쓰고 있음. disk에 언제 쓸 지 확인, split도 disk 안 쓰고 있음 
 page * insert_into_parent(page * root, page * origin_child, off_t origin_child_offset, int64_t key, page* new_child, off_t new_child_offset) {
-    printf("insert into parent입니다요. new key: %ld\n",key);
+    // printf("insert into parent입니다요. origin offt: %ld new key: %ld new offt: %ld\n",origin_child_offset,key,new_child_offset);
     //left는 기존 node, right는 새로운 node, key는 parent에 들어갈 방향키
     int left_index;
     page * parent;
-
     
     off_t parent_offset=origin_child->parent_page_offset;
     parent =load_page(parent_offset);
+    // printf("기존 parent: p %ld,",parent->next_offset);
+    // for(int i=0; i<parent->num_of_keys; i++){
+    //     printf("k %ld, p %ld, ",parent->b_f[i].key,parent->b_f[i].p_offset);
+    // }
+    // printf("\n");
     if (parent_offset == 0) //기존 node가 root였기 때문에 root에 넣는다.
     //todo root에서 disk에 썼음
         return insert_into_new_root(origin_child,origin_child_offset,key,new_child,new_child_offset);
@@ -545,15 +550,21 @@ page * insert_into_parent(page * root, page * origin_child, off_t origin_child_o
     //parent에서 기존 노드의 index를 가져와 
     //next origin_key origin_node key new_node 형식으로 가야 함 
     //left_index는 0. 
-    printf("parent offt:%ld origin offt: %ld\n",origin_child->parent_page_offset,origin_child_offset);
+    // printf("parent offt:%ld origin offt: %ld\n",origin_child->parent_page_offset,origin_child_offset);
     left_index = get_left_index(parent, origin_child_offset);
 
     //부모에 자리 있으면 parent record의 v(left_index+1)에 key, p(left_index+1)에 new_node 삽입 
     //LEAF 
-    if (parent->num_of_keys < LEAF_MAX ){
+    if (parent->num_of_keys < INTERNAL_MAX ){
         parent= insert_into_node(root, parent, parent_offset,left_index, key, new_child_offset);
         pwrite(fd,parent, sizeof(page),parent_offset);
+        free(parent);
         parent=load_page(parent_offset);
+        // printf("insert 후 parent: p %ld,",parent->next_offset);
+        // for(int i=0; i<parent->num_of_keys; i++){
+        //     printf("k %ld, p %ld, ",parent->b_f[i].key,parent->b_f[i].p_offset);
+        // }
+        // printf("\n");
         free(parent);
         return load_page(hp->rpo);
     }
@@ -587,12 +598,18 @@ page * insert_into_node_after_splitting(page * root, off_t old_node_offset, page
     new_node->parent_page_offset=old_node->parent_page_offset;
     new_node->num_of_keys=0;
     new_node->is_leaf=0;
-     
+    temp_next_offset=old_node->next_offset;
     memset(new_node->b_f, 0, sizeof(new_node->b_f));
     pwrite(fd,new_node,sizeof(page),new_node_offset);
     free(new_node);
     new_node=load_page(new_node_offset);
 
+    // printf("old page num key:%d child:[",old_node->num_of_keys);
+    // printf("p%ld, ",old_node->next_offset);
+    // for(int i=0; i<old_node->num_of_keys;i++){
+    //     printf("k%ld, p%ld,",old_node->b_f[i].key,old_node->b_f[i].p_offset);
+    // }
+    // printf("]\n");
     //old node의 key, pointer 저장. 
     //old node의 leftmost보다 작은 값은 next_offset에 저장. 
      for (i = 0, j = 0; i < old_node->num_of_keys; i++, j++) {
@@ -603,21 +620,28 @@ page * insert_into_node_after_splitting(page * root, off_t old_node_offset, page
     }
     temp_pointers[left_index+1] = new_pointer;
     temp_keys[left_index+1] = new_key;
+    // printf("temp:[");
+    // for(int i=0; i<old_node->num_of_keys+1;i++){
+    //     printf("p%ld, ",temp_pointers[i]);
+    //     printf("k%ld, ",temp_keys[i]);
+    // }
+    // printf("]\n");
     split = cut(INTERNAL_MAX+2)-1;
     //0~split-1까지 저장... 
     page * child;
-    memset(new_node->b_f, 0, sizeof(new_node->b_f));
+    memset(old_node->b_f, 0, sizeof(old_node->b_f));
     old_node->num_of_keys=0;
 
     for (i = 0; i < split; i++) {
         old_node->b_f[i].p_offset = temp_pointers[i];
         old_node->b_f[i].key = temp_keys[i];
         old_node->num_of_keys++;
-        child=load_page(old_node->b_f[i].p_offset);
+        child=load_page(temp_pointers[i]);
         child->parent_page_offset=old_node_offset;
-        pwrite(fd,child,sizeof(page),old_node->b_f[i].p_offset);
+        pwrite(fd,child,sizeof(page),temp_pointers[i]);
         free(child);
     }
+    
     child=load_page(old_node->next_offset);
     child->parent_page_offset=old_node_offset;
     pwrite(fd,child,sizeof(page),old_node->next_offset);
@@ -630,9 +654,9 @@ page * insert_into_node_after_splitting(page * root, off_t old_node_offset, page
         new_node->b_f[k].p_offset = temp_pointers[i];
         new_node->b_f[k].key = temp_keys[i];
         new_node->num_of_keys++;
-        child=load_page(new_node->b_f[k].p_offset);
+        child=load_page(temp_pointers[i]);
         child->parent_page_offset=new_node_offset;
-        pwrite(fd,child,sizeof(page),new_node->b_f[k].p_offset);
+        pwrite(fd,child,sizeof(page),temp_pointers[i]);
         free(child);
     }
     
@@ -644,7 +668,23 @@ page * insert_into_node_after_splitting(page * root, off_t old_node_offset, page
     child->parent_page_offset=new_node_offset;
     pwrite(fd,child,sizeof(page),new_node->next_offset);
     free(child);
-
+    // child=load_page(old_node->next_offset);
+    // printf("split 후 old: %ld, ",child->parent_page_offset);
+    // free(child);
+    // for(int i=0; i<old_node->num_of_keys;i++){
+    //     child=load_page(old_node->b_f[i].p_offset);
+    //     printf("%ld, ",child->parent_page_offset);
+    //     free(child);
+    // }
+    // printf("]\n");
+    // child=load_page(new_node->next_offset);
+    // printf("split 후 new: %ld, ",child->parent_page_offset);
+    // for(int i=0; i<new_node->num_of_keys;i++){
+    //     child=load_page(new_node->b_f[i].p_offset);
+    //     printf("%ld, ",child->parent_page_offset);
+    //     free(child);
+    // }
+    // printf("]\n");
     pwrite(fd,old_node,sizeof(page), old_node_offset);
     pwrite(fd,new_node, sizeof(page),new_node_offset);
 
@@ -680,10 +720,6 @@ page * insert_into_leaf_after_splitting(page * root, page * leaf, int64_t key, r
     free(new_leaf);
     new_leaf = load_page(new_leaf_offset);
 
-    if (new_leaf == NULL) {
-        perror("Failed to create new leaf node.");
-        exit(EXIT_FAILURE);
-    }
 
     insertion_index = 0;
     // 기존 leaf node의 key 계속 돌면서 들어 가 자리 찾는다
@@ -714,28 +750,32 @@ page * insert_into_leaf_after_splitting(page * root, page * leaf, int64_t key, r
         leaf->num_of_keys++;
     }
     //split~leaf_max까지 채워. old는 leaf max-1까지 있었지만 temp엔 하나 추가돼서 leaf max까지 있음 
-    for (i=split; i <=LEAF_MAX ; i++) {
-        new_leaf->records[new_leaf->num_of_keys++] = temp_records[i];
+    int k=0;
+    for (i=split,k=0; i <=LEAF_MAX ; k++,i++) {
+        new_leaf->records[k] = temp_records[i];
+        new_leaf->num_of_keys++;
     }
+    
+    pwrite(fd,leaf,sizeof(page),leaf_offset);        
+    pwrite(fd,new_leaf, sizeof(page),new_leaf_offset);
+    leaf=load_page(leaf_offset);
+    new_leaf=load_page(new_leaf_offset);
     // printf("origin: ");
-    // for(int i=0; i<LEAF_MAX; i++){
+    // for(int i=0; i<leaf->num_of_keys; i++){
     //     printf("%ld ",leaf->records[i].key);
     // }
     // printf("\n");
     // printf("new: ");
-    // for(int i=0; i<LEAF_MAX; i++){
+    // for(int i=0; i<new_leaf->num_of_keys; i++){
     //     printf("%ld ",new_leaf->records[i].key);
     // }
     // printf("\n");
-    pwrite(fd,leaf,sizeof(page),leaf_offset);        
-    pwrite(fd,new_leaf, sizeof(page),new_leaf_offset);
-
     //새 leaf node의 첫 번째 key가 두 leaf node의 방향key가 된다.
     new_key = new_leaf->records[0].key; 
     //부모에 leaf, new_leaf, new_key 보내. 
     //todo insert_into_parent에서 disk에 썼음...
     root= insert_into_parent(root, leaf,leaf_offset, new_key, new_leaf,new_leaf_offset);
-    
+    pwrite(fd,root,sizeof(page),hp->rpo);
     free(new_leaf);
 
     return load_page(hp->rpo);
@@ -771,9 +811,7 @@ off_t common_parent(page * left, off_t left_offset, page * right, off_t right_of
     }
 
     if (leftparent_offset == rightparent_offset) {
-        printf("공통 부모 offset: %ld\n", leftparent_offset);
-        printf("오른쪽 자식 offset: %ld\n", right_traversed_offset);
-        printf("new key: %ld\n", key);
+        
         leftparent=change_common_parent(leftparent,leftparent_offset,right_traversed_offset, key);
         pwrite(fd,leftparent,sizeof(page),leftparent_offset);
         free(leftparent);
@@ -859,7 +897,6 @@ page * leaf_right_rotation(page * root,off_t leaf_offset, page * leaf, off_t rig
 //! record 만든 거 start_new_file에서 저장 
 //todo disk 쓰기 작업 있음!! 다른 것도 다 disk 쓰기 작업 넣어야 함...
 int db_insert(int64_t key, char * value) {
-    printf("db_insert입니다요\n");
     off_t r=hp->rpo;
     page * root=load_page(r);
     // ignore duplication
@@ -879,7 +916,8 @@ int db_insert(int64_t key, char * value) {
     //if tree already exists then find proper place(node)
     page * leaf=find_leaf(r,key);
     off_t leaf_offset=find_offset(key);
-    if(leaf==NULL){
+    // printf("leaf offset: %ld\n",leaf_offset);
+    if(leaf_offset==0){
         free(leaf);
         return -1;
     }
@@ -888,11 +926,15 @@ int db_insert(int64_t key, char * value) {
     //공간 있으면 leaf node니까 leaf에 넣기...
     //최대 key 개수가 4개면... 현재 3개면 하나 더 들어갈 수 있겠죵 
     if(leaf->num_of_keys<LEAF_MAX){
-        printf("laef에 자리 있음!\n");
         leaf=insert_into_leaf(leaf,key,pair);
         //new page 함수 참고...
         pwrite(fd, leaf, sizeof(page),leaf_offset);
-        free(leaf);
+        // free(leaf);
+        // leaf=load_page(leaf_offset);
+        // for(int i=0;i<leaf->num_of_keys; i++){
+        //     printf("%ld, ",leaf->records[i].key);
+        // }
+        // printf("insert leaf 완\n");
         return 0;
     }
 
@@ -900,14 +942,11 @@ int db_insert(int64_t key, char * value) {
     //공간 없으면 왼쪽, 오른쪽 sibling 확인해서 공간 있는 지 확인. 
     off_t right_sibling_offset = leaf->next_offset;
     page * right_sibling = load_page(leaf->next_offset);
-    if(right_sibling_offset==0) printf("right sibling is null\n");
-    else printf("right sibling's num_of_keys: %d\n",right_sibling->num_of_keys);
     //todo 왼쪽 존재하면 key rotation 가능한 지 확인 가능하면 수행하고 return, 
     //todo 불가능하고 오른쪽 존재하면 key rotation 가능여부 확인. 가능하면 수행하고 return, 불가능이면 split하러...
     //todo insert node split, insert leaf split에서도 split 전에 key rotation 가능여부 확인해야 함. 
    
     if(right_sibling_offset!=0&&right_sibling->num_of_keys<LEAF_MAX){
-        printf("let's go right rotataion\n");
         root=leaf_right_rotation(root, leaf_offset, leaf, right_sibling_offset, right_sibling, pair);
         pwrite(fd,root,sizeof(page),r);
         free(right_sibling);
@@ -916,7 +955,6 @@ int db_insert(int64_t key, char * value) {
     
     //공간도 없고 key rotation도 안 되면 split... 
     else{
-        printf("let's go split leaf\n");
         root=insert_into_leaf_after_splitting(root, leaf,key,pair);
         pwrite(fd,root,sizeof(page),hp->rpo);
     }
@@ -928,14 +966,11 @@ int db_insert(int64_t key, char * value) {
 
 //todo disk에 쓰기 작업 완료. 
 page * remove_entry_from_node(page * n, off_t n_offset,int key) {
-    printf("remove entry from node입니다요\n");
+    // printf("remove entry from node입니다요\n");
     int i, num_pointers;
     //leaf, internal 나눠서 제거해야 함
     if(n->is_leaf){
-        printf("지우기 전 leaf 상황... ");
-        for(int i=0; i<n->num_of_keys; i++){
-            printf(" %ld",n->records[i].key);
-        }
+        
         int i, record_index = -1;
 
         // 지워질 record의 위치를 찾기
@@ -956,13 +991,14 @@ page * remove_entry_from_node(page * n, off_t n_offset,int key) {
             n->records[i] = n->records[i + 1];
         }
         n->num_of_keys--;
-        printf("\n지운 후 n의 key 개수: %d\n",n->num_of_keys);
+        // n->num_of_keys--;
+        // printf("\n지운 후 n의 key 개수: %d\n",n->num_of_keys);
         pwrite(fd,n,sizeof(page),n_offset);
-        printf("leaf 상황... ");
-        for(int i=0; i<n->num_of_keys; i++){
-            printf(" %ld",n->records[i].key);
-        }
-        printf("끝\n");
+        // printf("leaf 상황... ");
+        // for(int i=0; i<n->num_of_keys; i++){
+        //     printf(" %ld",n->records[i].key);
+        // }
+        // printf("끝\n");
         pwrite(fd,n,sizeof(page),n_offset);
         return load_page(n_offset);
     }
@@ -977,9 +1013,14 @@ page * remove_entry_from_node(page * n, off_t n_offset,int key) {
             n->b_f[i-1].p_offset=n->b_f[i].p_offset;
         }
         n->num_of_keys--;
-        printf("지운 후 n의 key 개수: %d\n",n->num_of_keys);
-        pwrite(fd,n,sizeof(page),n_offset);
-        return load_page(n_offset);
+        // printf("지운 후 n의 key 개수: %d ,[",n->num_of_keys);
+        // pwrite(fd,n,sizeof(page),n_offset);
+        // n=load_page(n_offset);
+        // for(int i=0; i<n->num_of_keys; i++){
+        //     printf("%ld,",n->b_f[i].key);
+        // }
+        // printf("]\n");
+        return n;
     }
 }
 
@@ -1002,21 +1043,21 @@ page * adjust_root(page * root) {
         
         printf("new root의 offset은 %ld\n",root->next_offset);
         page * new_root=load_page(root->next_offset);
-        printf("new root의 key 개수 %d\n",new_root->num_of_keys);
-        if(new_root->is_leaf){
-            printf("new root는 leaf\n");
-            for(int i=0; i<new_root->num_of_keys; i++){
-                printf("%ld ",new_root->records[i].key);
-            }
-        }
-        else{
-            printf("new root는 internal\n");
-            printf("%ld ",new_root->next_offset);
-            for(int i=0; i<new_root->num_of_keys; i++){
-                printf("%ld ",new_root->b_f[i].key);
-                printf("%ld ",new_root->b_f[i].p_offset);
-            }
-        }
+        // printf("new root의 key 개수 %d\n",new_root->num_of_keys);
+        // if(new_root->is_leaf){
+        //     printf("new root는 leaf\n");
+        //     for(int i=0; i<new_root->num_of_keys; i++){
+        //         printf("%ld ",new_root->records[i].key);
+        //     }
+        // }
+        // else{
+        //     printf("new root는 internal\n");
+        //     printf("%ld ",new_root->next_offset);
+        //     for(int i=0; i<new_root->num_of_keys; i++){
+        //         printf("%ld ",new_root->b_f[i].key);
+        //         printf("%ld ",new_root->b_f[i].p_offset);
+        //     }
+        // }
          new_root->parent_page_offset= 0;
         usetofree(hp->rpo);
         hp->rpo=root->next_offset;
@@ -1061,27 +1102,27 @@ page * coalesce_nodes(page * root, page * n, off_t n_offset, page * neighbor, of
         n = neighbor;
         neighbor = tmp;
     }
-    if(!n->is_leaf){
-        printf("neighbor offt: %ld , key: ",neighbor_offset);
-        for(int i=0; i<neighbor->num_of_keys; i++){
-            printf("%ld ",neighbor->b_f[i].key);
-        }
-        printf("\nn offt: %ld, key: ",n_offset);
-        for(int i=0; i<n->num_of_keys; i++){
-            printf("%ld ",n->b_f[i].key);
-        }
-        printf("\n");}
-    else{
-        printf("neighbor offt: %ld , key: ",neighbor_offset);
-        for(int i=0; i<neighbor->num_of_keys; i++){
-            printf("%ld ",neighbor->records[i].key);
-        }
-        printf("\nn offt: %ld, key: ",n_offset);
-        for(int i=0; i<n->num_of_keys; i++){
-            printf("%ld ",n->records[i].key);
-        }
-        printf("\n");
-    }
+    // if(!n->is_leaf){
+    //     printf("neighbor offt: %ld , key: ",neighbor_offset);
+    //     for(int i=0; i<neighbor->num_of_keys; i++){
+    //         printf("%ld ",neighbor->b_f[i].key);
+    //     }
+    //     printf("\nn offt: %ld, key: ",n_offset);
+    //     for(int i=0; i<n->num_of_keys; i++){
+    //         printf("%ld ",n->b_f[i].key);
+    //     }
+    //     printf("\n");}
+    // else{
+    //     printf("neighbor offt: %ld , key: ",neighbor_offset);
+    //     for(int i=0; i<neighbor->num_of_keys; i++){
+    //         printf("%ld ",neighbor->records[i].key);
+    //     }
+    //     printf("\nn offt: %ld, key: ",n_offset);
+    //     for(int i=0; i<n->num_of_keys; i++){
+    //         printf("%ld ",n->records[i].key);
+    //     }
+    //     printf("\n");
+    // }
     //왼쪽으로 merge할 거라서 neighbor의 마지막에 들어간다. 
     neighbor_insertion_index = neighbor->num_of_keys;
 
@@ -1105,7 +1146,8 @@ page * coalesce_nodes(page * root, page * n, off_t n_offset, page * neighbor, of
         page * child;
         for(int i=0; i<neighbor->num_of_keys; i++){
             child=load_page(neighbor->b_f[i].p_offset);
-            child->parent_page_offset=neighbor_offset;
+            if(neighbor_index==-2) child->parent_page_offset=n_offset;
+            else child->parent_page_offset=neighbor_offset;
             pwrite(fd,child,sizeof(page),neighbor->b_f[i].p_offset);
             free(child);
         }
@@ -1120,6 +1162,7 @@ page * coalesce_nodes(page * root, page * n, off_t n_offset, page * neighbor, of
             neighbor->records[i]=n->records[j];
             neighbor->num_of_keys++;
         }
+        neighbor->parent_page_offset=n->parent_page_offset;
         neighbor->next_offset=n->next_offset;
         if(neighbor_index==-2){ pwrite(fd,neighbor,sizeof(page),n_offset);}
         else{pwrite(fd,neighbor,sizeof(page),neighbor_offset); }
@@ -1127,27 +1170,27 @@ page * coalesce_nodes(page * root, page * n, off_t n_offset, page * neighbor, of
     }
     
     
-    if(!n->is_leaf){
-        printf("바꾼 후 neighbor offt: %ld , key: ",neighbor_offset);
-        for(int i=0; i<neighbor->num_of_keys; i++){
-            printf("%ld ",neighbor->b_f[i].key);
-        }
-        printf("\nn offt: %ld, key: ",n_offset);
-        for(int i=0; i<n->num_of_keys; i++){
-            printf("%ld ",n->b_f[i].key);
-        }
-        printf("\n");}
-    else{
-        printf("바꾼 후 neighbor offt: %ld , key: ",neighbor_offset);
-        for(int i=0; i<neighbor->num_of_keys; i++){
-            printf("%ld ",neighbor->records[i].key);
-        }
-        printf("\nn offt: %ld, key: ",n_offset);
-        for(int i=0; i<n->num_of_keys; i++){
-            printf("%ld ",n->records[i].key);
-        }
-        printf("\n");
-    }
+    // if(!n->is_leaf){
+    //     printf("바꾼 후 neighbor offt: %ld , key: ",neighbor_offset);
+    //     for(int i=0; i<neighbor->num_of_keys; i++){
+    //         printf("%ld ",neighbor->b_f[i].key);
+    //     }
+    //     printf("\nn offt: %ld, key: ",n_offset);
+    //     for(int i=0; i<n->num_of_keys; i++){
+    //         printf("%ld ",n->b_f[i].key);
+    //     }
+    //     printf("\n");}
+    // else{
+    //     printf("바꾼 후 neighbor offt: %ld , key: ",neighbor_offset);
+    //     for(int i=0; i<neighbor->num_of_keys; i++){
+    //         printf("%ld ",neighbor->records[i].key);
+    //     }
+    //     printf("\nn offt: %ld, key: ",n_offset);
+    //     for(int i=0; i<n->num_of_keys; i++){
+    //         printf("%ld ",n->records[i].key);
+    //     }
+    //     printf("\n");
+    // }
     off_t temp_n_parent=n->parent_page_offset;
     //여기서 n 초기화
     if(neighbor_index==-2){
@@ -1157,11 +1200,11 @@ page * coalesce_nodes(page * root, page * n, off_t n_offset, page * neighbor, of
         freetouse(n_offset);
     }
     page * parent=load_page(temp_n_parent);
-    printf("parent key: ");
-    for(int i=0; i<parent->num_of_keys; i++){
-        printf("%ld ",parent->b_f[i].key);
-    }
-    printf("\n");
+    // printf("parent key: ");
+    // for(int i=0; i<parent->num_of_keys; i++){
+    //     printf("%ld ",parent->b_f[i].key);
+    // }
+    // printf("\n");
     root = delete_entry(root, temp_n_parent, k_prime);
     return root;
 }
@@ -1179,10 +1222,7 @@ page * redistribute_nodes(page * root, page * n, off_t n_offset, page * neighbor
     int i;
     page * tmp;
     page * parent=load_page(n->parent_page_offset);
-    /* Case: n has a neighbor to the left. 
-     * Pull the neighbor's last key-pointer pair over
-     * from the neighbor's right end to n's left end.
-     */
+    
     //n이 leftmost가 아닐 때. 
     if (neighbor_index != -2) {
         //n이 leaf라면 n을 오른쪽으로 한 칸씩 밀고, neighbor의 마지막 record 갖고 오고 parent의 방향키를 n의 0번째 key로
@@ -1190,11 +1230,7 @@ page * redistribute_nodes(page * root, page * n, off_t n_offset, page * neighbor
             for(int i=n->num_of_keys; i>0; i--){
                 n->records[i]=n->records[i-1];
             }
-            n->records[0]=neighbor->records[neighbor->num_of_keys-1];
-            for(int i=n->num_of_keys-1; i<LEAF_MAX; i++){
-                neighbor->records[i].key=-1;
-                neighbor->records[i].value[0]='\0';
-            }
+            n->records[0].key=neighbor->records[neighbor->num_of_keys-1].key;
             //이 때는 바꾼 후 n의 0번 째가 필요
             parent->b_f[k_prime_index].key=n->records[0].key;
         }
@@ -1202,16 +1238,16 @@ page * redistribute_nodes(page * root, page * n, off_t n_offset, page * neighbor
         else{
             for(int i=n->num_of_keys; i>0; i--){
                 n->b_f[i].key=n->b_f[i-1].key;
-                n->b_f[i].p_offset=n->b_f[i].p_offset;
+                n->b_f[i].p_offset=n->b_f[i-1].p_offset;
             }
             n->b_f[0].p_offset=n->next_offset;
             n->b_f[0].key=k_prime;
             parent->b_f[k_prime_index].key=neighbor->b_f[neighbor->num_of_keys-1].key;
-            n->next_offset=neighbor->b_f[neighbor->next_offset-1].p_offset;
-            for(int i=n->num_of_keys-1; i<INTERNAL_MAX; i++){
-                n->b_f[i].key=-1;
-                n->b_f[i].p_offset=0;
-            }
+            n->next_offset=neighbor->b_f[neighbor->num_of_keys-1].p_offset;
+            page * child=load_page(n->next_offset);
+            child->parent_page_offset=n_offset;
+            pwrite(fd,child,sizeof(page),n->next_offset);
+            free(child);
         }
     }
 
@@ -1225,14 +1261,11 @@ page * redistribute_nodes(page * root, page * n, off_t n_offset, page * neighbor
         //n이 leaf라면
         if (n->is_leaf) {
             n->records[n->num_of_keys]=neighbor->records[0];
+            
             for(int i=0; i<neighbor->num_of_keys-1; i++){
                 neighbor->records[i]=neighbor->records[i+1];
             }
-            for(int i=n->num_of_keys-1; i<LEAF_MAX; i++){
-                neighbor->records[i].key=-1;
-                neighbor->records[i].value[0]='\0';
-            }
-            //이 때는 n을 바꾼 후 0번째가 필요함.
+            //바꾼 후 0번 째가 필요
             parent->b_f[k_prime_index].key=neighbor->records[0].key;
         }
         //n이 internal일 때
@@ -1240,25 +1273,27 @@ page * redistribute_nodes(page * root, page * n, off_t n_offset, page * neighbor
             
             n->b_f[n->num_of_keys].key = k_prime;
             n->b_f[n->num_of_keys].p_offset = neighbor->next_offset;
+            page * child=load_page(n->b_f[n->num_of_keys].p_offset);
+            child->parent_page_offset=n_offset;
+            pwrite(fd,child,sizeof(page),n->b_f[n->num_of_keys].p_offset);
+            free(child);
             //이 때는 바꾸기 전의 neighbor 0 번째가 필요함... 바꾸러 갈 때 주고 가~
             parent->b_f[k_prime_index].key=neighbor->b_f[0].key;
             neighbor->next_offset=neighbor->b_f[0].p_offset;
             for(int i=0; i<neighbor->num_of_keys-1; i++){
                 neighbor->b_f[i].key=neighbor->b_f[i+1].key;
-                neighbor->b_f[i].p_offset=neighbor->b_f[i].p_offset;
+                neighbor->b_f[i].p_offset=neighbor->b_f[i+1].p_offset;
             }
-            for(int i=neighbor->num_of_keys-1; i<INTERNAL_MAX; i++){
-                neighbor->b_f[i].key=-1;
-                neighbor->b_f[i].p_offset=0;
-            }
+            
         }
     }
     n->num_of_keys++;
     neighbor->num_of_keys--;
+    
     pwrite(fd,n,sizeof(page),n_offset);
     pwrite(fd,neighbor,sizeof(page),neighbor_offset);
     pwrite(fd,parent,sizeof(page),n->parent_page_offset);
-    return root;
+    return load_page(hp->rpo);
 }
 
 
@@ -1289,7 +1324,6 @@ page * delete_entry(page * root, off_t n_offset, int key) {
 
     //최소 조건 만족했으면 그대로 return
     if (n->num_of_keys >= min_keys){
-        printf("조건 만족\n");
         free(n);
         free(parent);
         return load_page(hp->rpo);
@@ -1311,9 +1345,10 @@ page * delete_entry(page * root, off_t n_offset, int key) {
     else if(neighbor_index==-1) neighbor_offset=parent->next_offset;
     else neighbor_offset=parent->b_f[neighbor_index].p_offset;
     neighbor=load_page(neighbor_offset);
-    capacity = n->is_leaf ? LEAF_MAX: INTERNAL_MAX;
+    //internal에선 부모 key (k prime)을 갖고 내려와서 key가 하나 더 추가됨.
+    capacity = n->is_leaf ? LEAF_MAX: INTERNAL_MAX-1;
 
-    printf("neighbor_index: %d, k_prime_index: %d k_prime: %ld, neighbor_offset: %ld, num_key: %d\n",neighbor_index,k_prime_index,k_prime,neighbor_offset,neighbor->num_of_keys);
+    // printf("neighbor_index: %d, k_prime_index: %d k_prime: %ld, neighbor_offset: %ld, num_key: %d\n",neighbor_index,k_prime_index,k_prime,neighbor_offset,neighbor->num_of_keys);
     if (neighbor->num_of_keys + n->num_of_keys <=capacity){
         
         return coalesce_nodes(root, n, n_offset,neighbor, neighbor_offset,neighbor_index, k_prime);}
@@ -1331,11 +1366,11 @@ page * delete_entry(page * root, off_t n_offset, int key) {
         if(right_neighbor_index==parent->num_of_keys || right_neighbor_index==0) return  redistribute_nodes(root, n,n_offset, neighbor, neighbor_offset,neighbor_index, k_prime_index, k_prime);
         //여기서 나올 수 있는 right_neighbor_index의 값은 1부터 num_of_keys-1까지... 
         right_k_prime_index = right_neighbor_index;
-        right_k_prime = parent->b_f[k_prime_index].key;
+        right_k_prime = parent->b_f[right_k_prime_index].key;
         right_neighbor=load_page(parent->b_f[right_neighbor_index].p_offset);
         off_t right_neighbor_offset=parent->b_f[right_neighbor_index].p_offset;
-         printf("rightneighbor_index: %d, rightk_prime_index: %d rightk_prime: %ld, rightneighbor_offset: %ld, num key: %d \n",right_neighbor_index,right_k_prime_index,k_prime,right_neighbor_offset,right_neighbor->num_of_keys);
-        if (right_neighbor->num_of_keys + n->num_of_keys < capacity) {
+        //  printf("rightneighbor_index: %d, rightk_prime_index: %d rightk_prime: %ld, rightneighbor_offset: %ld, num key: %d \n",right_neighbor_index,right_k_prime_index,right_k_prime,right_neighbor_offset,right_neighbor->num_of_keys);
+        if (right_neighbor->num_of_keys + n->num_of_keys <= capacity) {
            
             //이러면 무조건 n이 왼쪽으로 가서... 저 함수 내부에서 case 나눠서 swap하기가 힘듦... 그냥 여기서 swap해서 보내는 걸로.
             return coalesce_nodes(root, right_neighbor, right_neighbor_offset, n, n_offset,right_neighbor_index, right_k_prime);}
@@ -1396,18 +1431,19 @@ void reset_tree_nodes(page *current) {
     usetofree(current->parent_page_offset); // 현재 페이지를 free list에 등록
 }
 int db_delete(int64_t key) {
-    page * root=load_page(hp->rpo);
-    page * leaf=find_leaf(hp->rpo,key);
-    off_t leaf_offset=find_offset(key);
-    if(leaf!=NULL){
+    
+    char * check=db_find(key);
+    if(check!=NULL){
+        page * root=load_page(hp->rpo);
+        page * leaf=find_leaf(hp->rpo,key);
+        off_t leaf_offset=find_offset(key);
         root=delete_entry(root,leaf_offset,key);
         pwrite(fd,root,sizeof(page),hp->rpo);
         free(root);
         free(leaf);
         return 0;
     }
-    free(root);
-    free(leaf);
+    printf("없는 값 delete 시도\n");
     return -1;
 }//fin
 

@@ -1,12 +1,20 @@
 #include "bpt.h"
-
-int main(){
+#include <stdio.h>
+#include <stdlib.h>
+FILE *output_file = NULL;
+int main() {
+    int line_number = 1;
     int64_t input;
     char instruction;
     char buf[120];
     char *result;
-    open_table("test.db");
+
+    output_file = fopen("output2.txt", "w");
+     open_table("test.db");
     while(scanf("%c", &instruction) != EOF){
+        fprintf(output_file,"Debug: Processing line %d, instruction '%c'\n", line_number, instruction);
+        if(line_number%1000==0) printf("Debug: Processing line %d, instruction '%c'\n", line_number, instruction);
+        // print_leaf();
         switch(instruction){
             case 'i':
                 scanf("%ld %s", &input, buf);
@@ -26,7 +34,8 @@ int main(){
                 break;
             case 'd':
                 scanf("%ld", &input);
-                db_delete(input);
+                int check=db_delete(input);
+                if(check==-1) fprintf(output_file,"deletion failed/n");
                 break;
             case 'q':
                 while (getchar() != (int)'\n');
@@ -40,11 +49,10 @@ int main(){
                 tree_reset_all();
                 break;
         }
+        line_number++; 
         while (getchar() != (int)'\n');
     }
-    printf("\n");
+    printf("끝~\n");
+    fclose(output_file);  // 파일 닫기
     return 0;
 }
-
-
-

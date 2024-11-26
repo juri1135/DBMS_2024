@@ -12,11 +12,12 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <string.h>
-// #define LEAF_MAX 31
-// #define INTERNAL_MAX 248
-#define LEAF_MAX 2
-#define INTERNAL_MAX 2
+#define LEAF_MAX 31
+#define INTERNAL_MAX 248
+// #define LEAF_MAX 3
+// #define INTERNAL_MAX 4
 //leaf node에서 node가 갖고 있는 key, record pair
+extern FILE *output_file;
 typedef struct record{
     int64_t key;
     char value[120];
@@ -53,6 +54,7 @@ extern page * rt;
 
 extern H_P * hp;
 // FUNCTION PROTOTYPES.
+void print_leaf();
 int open_table(char * pathname);
 int originopen_table(char * pathname);
 H_P * load_header(off_t off);

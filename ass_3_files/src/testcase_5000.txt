@@ -1,0 +1,23 @@
+i 10 10
+i 30 30
+i 20 20 
+i 1 1
+i 40 40
+i 50 d
+i 25 df
+i 15 dfsdfd
+i 35 dgsgdg
+i 45 ggg
+i 7 fdg
+i 13 dsg
+i 60 adg
+i 17 gsgd 
+d 13 
+d 25 
+d 15 
+d 35
+i 25 sdfs
+i 26 fsdfg
+i 32 gsdgd
+i 33 fsfdsfg
+d 50
