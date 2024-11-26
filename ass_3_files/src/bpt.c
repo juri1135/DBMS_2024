@@ -301,7 +301,6 @@ int cut(int length) {
 //! disk에 쓰기 작업
 //todo disk에 씀  
 void start_new_file(record rec) {
-    printf("start_new_file입니다요\n");
     page * root;
     off_t ro;
     ro = new_page();
@@ -319,17 +318,13 @@ void start_new_file(record rec) {
     pwrite(fd, rt, sizeof(page), hp->rpo);
     free(rt);
     rt = load_page(hp->rpo);
-    for(int i=0; i<rt->num_of_keys; i++){
-        printf("%ld\n",rt->records[0].key);
-    }
-    //printf("new file is made\n");
 }
 
 //! next 반영한 상태. 
 page * find_leaf(off_t root, int key){
     // printf("find_leaf입니다요\n");
     if(root==0){
-        printf("Empty tree\n");
+        // printf("Empty tree\n");
         return NULL;
     }
     page *c = load_page(hp->rpo);
@@ -790,23 +785,23 @@ off_t common_parent(page * left, off_t left_offset, page * right, off_t right_of
     //초기 부모 page
     page * leftparent=load_page(leftparent_offset);
     page * rightparent=load_page(rightparent_offset);
-    // 공통 부모 찾기
-    off_t left_traversed_offset = left_offset;   // 왼쪽에서 이동한 자식 offset
-    off_t right_traversed_offset = right_offset; // 오른쪽에서 이동한 자식 offset
+    //공통 부모 찾기
+    off_t left_traversed_offset = left_offset;  
+    off_t right_traversed_offset = right_offset;
 
      while (leftparent_offset != rightparent_offset) {
-        // 왼쪽 부모 상위 노드로 이동
+        //왼쪽 부모 상위 노드로 이동
         off_t next_leftparent_offset = leftparent->parent_page_offset;
         free(leftparent);
         leftparent = load_page(next_leftparent_offset);
-        left_traversed_offset = leftparent_offset; // 현재 부모에서 이동한 자식 offset
+        left_traversed_offset = leftparent_offset; //현재 부모에서 이동한 자식 offset
         leftparent_offset = next_leftparent_offset;
 
-        // 오른쪽 부모 상위 노드로 이동
+        //오른쪽 부모 상위 노드로 이동
         off_t next_rightparent_offset = rightparent->parent_page_offset;
         free(rightparent);
         rightparent = load_page(next_rightparent_offset);
-        right_traversed_offset = rightparent_offset; // 현재 부모에서 이동한 자식 offset
+        right_traversed_offset = rightparent_offset; //현재 부모에서 이동한 자식 offset
         rightparent_offset = next_rightparent_offset;
     }
 
@@ -817,7 +812,7 @@ off_t common_parent(page * left, off_t left_offset, page * right, off_t right_of
         free(leftparent);
         free(rightparent);
 
-        return leftparent_offset; // 공통 부모의 offset 반환
+        return leftparent_offset; 
     }
     free(leftparent);
     free(rightparent);
@@ -909,7 +904,7 @@ int db_insert(int64_t key, char * value) {
     record pair=make_record(key,value);
     //start a new file and return 0... and insert pair(new record)
     if(r==0){
-        printf("root가 없음\n");
+        // printf("root가 없음\n");
         start_new_file(pair);
         return 0;
     }
@@ -940,18 +935,18 @@ int db_insert(int64_t key, char * value) {
 
     
     //공간 없으면 왼쪽, 오른쪽 sibling 확인해서 공간 있는 지 확인. 
-    off_t right_sibling_offset = leaf->next_offset;
-    page * right_sibling = load_page(leaf->next_offset);
-    //todo 왼쪽 존재하면 key rotation 가능한 지 확인 가능하면 수행하고 return, 
-    //todo 불가능하고 오른쪽 존재하면 key rotation 가능여부 확인. 가능하면 수행하고 return, 불가능이면 split하러...
-    //todo insert node split, insert leaf split에서도 split 전에 key rotation 가능여부 확인해야 함. 
+    // off_t right_sibling_offset = leaf->next_offset;
+    // page * right_sibling = load_page(leaf->next_offset);
+    // //todo 왼쪽 존재하면 key rotation 가능한 지 확인 가능하면 수행하고 return, 
+    // //todo 불가능하고 오른쪽 존재하면 key rotation 가능여부 확인. 가능하면 수행하고 return, 불가능이면 split하러...
+    // //todo insert node split, insert leaf split에서도 split 전에 key rotation 가능여부 확인해야 함. 
    
-    if(right_sibling_offset!=0&&right_sibling->num_of_keys<LEAF_MAX){
-        root=leaf_right_rotation(root, leaf_offset, leaf, right_sibling_offset, right_sibling, pair);
-        pwrite(fd,root,sizeof(page),r);
-        free(right_sibling);
-        return 0;
-    }
+    // if(right_sibling_offset!=0&&right_sibling->num_of_keys<LEAF_MAX){
+    //     root=leaf_right_rotation(root, leaf_offset, leaf, right_sibling_offset, right_sibling, pair);
+    //     pwrite(fd,root,sizeof(page),r);
+    //     free(right_sibling);
+    //     return 0;
+    // }
     
     //공간도 없고 key rotation도 안 되면 split... 
     else{
@@ -1029,7 +1024,7 @@ page * remove_entry_from_node(page * n, off_t n_offset,int key) {
 //그 때 호출됨. 그거 아니면 처음부터 root가 leaf인 상태일 때... 
 //todo disk에 쓰기 작업 완료 근데 애매쓰
 page * adjust_root(page * root) {
-    printf("root 수정하러 왔습니다요\n");
+    // printf("root 수정하러 왔습니다요\n");
     //root에서 지운 후에 key 남아 있으면 ㄱㅊ 진행시켜
    
     if (root->num_of_keys > 0)
@@ -1041,7 +1036,7 @@ page * adjust_root(page * root) {
     if (!root->is_leaf) {
         //todo new_root에 root의 첫 번째 자식 덮어 씌우고, 첫 번째 자식 자리에 update한 new_root 저장하고, 헤더에 root를 첫 번째 자식으로 지정
         
-        printf("new root의 offset은 %ld\n",root->next_offset);
+        // printf("new root의 offset은 %ld\n",root->next_offset);
         page * new_root=load_page(root->next_offset);
         // printf("new root의 key 개수 %d\n",new_root->num_of_keys);
         // if(new_root->is_leaf){
@@ -1218,7 +1213,7 @@ page * coalesce_nodes(page * root, page * n, off_t n_offset, page * neighbor, of
  */
 page * redistribute_nodes(page * root, page * n, off_t n_offset, page * neighbor, off_t neighbor_offset, int neighbor_index, int k_prime_index, int k_prime) {  
     //여기선 node가 삭제된 게 아니라서 직속 부모 외에는 key값 수정 안 해줘도 됨. 재귀적으로 수행할 필요 없음. 
-    printf("재분배하러 왔습니다요\n");
+    // printf("재분배하러 왔습니다요\n");
     int i;
     page * tmp;
     page * parent=load_page(n->parent_page_offset);
@@ -1355,7 +1350,7 @@ page * delete_entry(page * root, off_t n_offset, int key) {
     //왼쪽이랑 안 된다면 오른쪽 형제 봐야 함. 근데 이 때 merge 안 돼서 재분배한다고 해도 무조건 왼쪽 형제랑 수행하도록... 
     //어차피 왼, 오 둘 다 merge 안 되는 거면 둘 다 재분배는 가능함. 그니까 그냥 왼쪽 형제로 통일. 어차피 n이 leftmost일 때는 재분배 함수 안에서 처리함 
     else{
-        printf("왼쪽 형제에 자리가 없대요\n");
+        // printf("왼쪽 형제에 자리가 없대요\n");
         page * right_neighbor;
         int right_neighbor_index, right_k_prime_index;
         int64_t right_k_prime;

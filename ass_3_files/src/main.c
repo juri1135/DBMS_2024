@@ -1,6 +1,8 @@
 #include "bpt.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
+#include <sys/time.h>
 FILE *output_file = NULL;
 int main() {
     int line_number = 1;
@@ -8,8 +10,20 @@ int main() {
     char instruction;
     char buf[120];
     char *result;
+    // Variables for CPU time
+    clock_t cpu_start, cpu_end;
+    double cpu_time_used;
 
-    output_file = fopen("output2.txt", "w");
+    // Variables for real elapsed time
+    struct timeval real_start, real_end;
+    long seconds, microseconds;
+    double real_elapsed;
+
+    // Start measuring times
+    cpu_start = clock();                   // Start CPU time
+    gettimeofday(&real_start, NULL); 
+
+    output_file = fopen("output(non-key-rotation).txt", "w");
      open_table("test.db");
     while(scanf("%c", &instruction) != EOF){
         fprintf(output_file,"Debug: Processing line %d, instruction '%c'\n", line_number, instruction);
@@ -52,7 +66,22 @@ int main() {
         line_number++; 
         while (getchar() != (int)'\n');
     }
-    printf("끝~\n");
+    // End measuring times
+    cpu_end = clock();                     // End CPU time
+    gettimeofday(&real_end, NULL);         // End real elapsed time
+
+    // Calculate CPU time
+    cpu_time_used = ((double)(cpu_end - cpu_start)) / CLOCKS_PER_SEC;
+
+    // Calculate real elapsed time
+    seconds = real_end.tv_sec - real_start.tv_sec;
+    microseconds = real_end.tv_usec - real_start.tv_usec;
+    real_elapsed = seconds + microseconds * 1e-6;
+
+    // Print results
+    printf("CPU time: %f seconds\n", cpu_time_used);
+    printf("Real elapsed time: %f seconds\n", real_elapsed);
+
     fclose(output_file);  // 파일 닫기
     return 0;
 }
