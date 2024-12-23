@@ -1,2 +1,5 @@
 # DBMS_2024
-한양대학교 강수용 교수님의 DBMS 수업을 들으며 진행했던 과제입니다. 
+1. sql query
+2. draw schema + make website using database
+3. B+tree stored on disk
+4. join algorithm  
