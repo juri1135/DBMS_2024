@@ -8,102 +8,6 @@ page * rt = NULL; //root is declared as global
 
 int fd = -1; //fd is declared as global
 static int table_counter = 0; 
-void print_leaf(){
-    if(hp->rpo==0) return;
-    page * root=load_page(hp->rpo);
-    if(root->is_leaf){
-        fprintf(output_file,"[");
-        for(int i=0; i<root->num_of_keys; i++){
-            fprintf(output_file,"%ld ",root->records[i].key);
-        }
-        fprintf(output_file,"]\n");
-        return;
-    }
-    off_t off=hp->rpo;
-    while (!root->is_leaf){
-        off=root->next_offset;
-        free(root);
-        root=load_page(off);
-    }
-    
-    fprintf(output_file,"%ld: [",off);
-    while(off!=0){
-        off=root->next_offset;
-        root=load_page(off);
-        for(int i=0; i<root->num_of_keys; i++){
-            fprintf(output_file,"%ld,",root->records[i].key);
-        }
-        fprintf(output_file,"\n");
-        free(root);
-        root=load_page(off);
-        
-    }
-    fprintf(output_file,"]\n");
-}
-void print_bpt() {
-    if (hp->rpo == 0) {
-        printf("Tree is empty.\n");
-        return;
-    }
-
-    printf("B+ Tree keys:\n");
-    printf("hp->rpo = %ld\n", hp->rpo);
-    print_keys(hp->rpo, 0);
-}
-
-
-// B+ Tree의 키를 출력하는 함수
-void print_keys(off_t page_offset, int depth) {
-    // 노드를 로드
-    page *current_page = load_page(page_offset);
-    if(current_page==NULL){
-        printf("load page fail\n");
-        return;
-
-    }
-    // 들여쓰기(Depth) 출력
-    for (int i = 0; i < depth; i++) {
-        printf("  ");
-    }
-
-    
-    // 현재 노드의 키 출력
-    printf("[");
-    if(!current_page->is_leaf) printf("offt: %ld ",current_page->next_offset);
-    for (int i = 0; i < current_page->num_of_keys; i++) {
-        if (current_page->is_leaf) {
-            
-            printf("%" PRId64, current_page->records[i].key); // 리프 노드
-        } else {
-            printf("%" PRId64, current_page->b_f[i].key); // 내부 노드
-            printf(" offt: %ld ",current_page->b_f[i].p_offset);
-        }
-        if (i < current_page->num_of_keys - 1) {
-            printf(", ");
-        }
-    }
-    printf("]\n");
-
-    // 리프 노드인 경우 탐색 종료
-    if (current_page->is_leaf) {
-        free(current_page);
-        return;
-    }
-
-    off_t child_offset;
-     // 내부 노드 탐색: 첫 번째 자식부터 출력
-    // 1. 첫 번째 자식 (next_offset) 출력
-    if (current_page->next_offset != 0) {
-        print_keys(current_page->next_offset, depth + 1);
-    }
-
-    // 2. 나머지 자식 (b_f 배열에 저장된 포인터들) 출력
-    for (int i = 0; i < current_page->num_of_keys; i++) {
-        print_keys(current_page->b_f[i].p_offset, depth + 1);
-    }
-
-    free(current_page);
-}
 
 
 H_P * load_header(off_t off) {
@@ -896,7 +800,7 @@ int db_insert(int64_t key, char * value) {
     page * root=load_page(r);
     // ignore duplication
     if(db_find(key)!=NULL){
-        printf("이미 존재하는 key\n");
+        // printf("이미 존재하는 key\n");
          return -1;
     }
     //if tree does not exist then start a new file.
@@ -935,18 +839,18 @@ int db_insert(int64_t key, char * value) {
 
     
     //공간 없으면 왼쪽, 오른쪽 sibling 확인해서 공간 있는 지 확인. 
-    // off_t right_sibling_offset = leaf->next_offset;
-    // page * right_sibling = load_page(leaf->next_offset);
-    // //todo 왼쪽 존재하면 key rotation 가능한 지 확인 가능하면 수행하고 return, 
-    // //todo 불가능하고 오른쪽 존재하면 key rotation 가능여부 확인. 가능하면 수행하고 return, 불가능이면 split하러...
-    // //todo insert node split, insert leaf split에서도 split 전에 key rotation 가능여부 확인해야 함. 
+    off_t right_sibling_offset = leaf->next_offset;
+    page * right_sibling = load_page(leaf->next_offset);
+    //todo 왼쪽 존재하면 key rotation 가능한 지 확인 가능하면 수행하고 return, 
+    //todo 불가능하고 오른쪽 존재하면 key rotation 가능여부 확인. 가능하면 수행하고 return, 불가능이면 split하러...
+    //todo insert node split, insert leaf split에서도 split 전에 key rotation 가능여부 확인해야 함. 
    
-    // if(right_sibling_offset!=0&&right_sibling->num_of_keys<LEAF_MAX){
-    //     root=leaf_right_rotation(root, leaf_offset, leaf, right_sibling_offset, right_sibling, pair);
-    //     pwrite(fd,root,sizeof(page),r);
-    //     free(right_sibling);
-    //     return 0;
-    // }
+    if(right_sibling_offset!=0&&right_sibling->num_of_keys<LEAF_MAX){
+        root=leaf_right_rotation(root, leaf_offset, leaf, right_sibling_offset, right_sibling, pair);
+        pwrite(fd,root,sizeof(page),r);
+        free(right_sibling);
+        return 0;
+    }
     
     //공간도 없고 key rotation도 안 되면 split... 
     else{
@@ -968,20 +872,20 @@ page * remove_entry_from_node(page * n, off_t n_offset,int key) {
         
         int i, record_index = -1;
 
-        // 지워질 record의 위치를 찾기
+        //지워질 record의 위치를 찾기
         for (i = 0; i < n->num_of_keys; i++) {
             if (n->records[i].key == key) {
-                record_index = i; // 해당 레코드의 인덱스 저장
+                record_index = i; 
                 break;
             }
         }
 
-        // 레코드가 없는 경우
+        //레코드가 없는 경우
         if (record_index == -1) {
             printf("Key not found in the page.\n");
         }
 
-        // 해당 record 이후의 모든 record를 한 칸 앞으로 당기기
+        //해당 record 이후의 모든 record를 한 칸 앞으로 당기기
         for (i = record_index; i < n->num_of_keys - 1; i++) {
             n->records[i] = n->records[i + 1];
         }
@@ -995,12 +899,9 @@ page * remove_entry_from_node(page * n, off_t n_offset,int key) {
         // }
         // printf("끝\n");
         pwrite(fd,n,sizeof(page),n_offset);
-        return load_page(n_offset);
+        return n;
     }
     else{
-        //n이 internal일 때는 지워지는 자식이 leftmost인지 아닌지가 중요하다... next offset 때문에 근데 나는 key값만 알기에... 다른 방법 필요
-        //재분배와 달리 merge해서 한 node가 사라질 때만 이 함수가 호출되니까 이 함수 호출 시점엔 child page가 삭제되어 있음. 즉 child 가리키는 pointer가 NULL
-        //노노 아직 가리키는 pointer는 유효함. dangling pointer가 된 거지... 그니까 load page해서 NULL인지를 확인ㄱㄱ 
         i=0;
         while(n->b_f[i].key!=key) i++;
         for(++i; i<n->num_of_keys; i++){
@@ -1015,6 +916,7 @@ page * remove_entry_from_node(page * n, off_t n_offset,int key) {
         //     printf("%ld,",n->b_f[i].key);
         // }
         // printf("]\n");
+        pwrite(fd,n,sizeof(page),n_offset);
         return n;
     }
 }
@@ -1065,9 +967,9 @@ page * adjust_root(page * root) {
     //만약 자식이 없었다면 root를 없애
 
     else{
+        usetofree(hp->rpo);
         hp->rpo=0;
         root=NULL;
-        usetofree(hp->rpo);
         pwrite(fd, hp, sizeof(H_P), 0);
         free(root);
         return NULL;
@@ -1189,10 +1091,10 @@ page * coalesce_nodes(page * root, page * n, off_t n_offset, page * neighbor, of
     off_t temp_n_parent=n->parent_page_offset;
     //여기서 n 초기화
     if(neighbor_index==-2){
-        freetouse(neighbor_offset);
+        usetofree(neighbor_offset);
     }
     else{
-        freetouse(n_offset);
+        usetofree(n_offset);
     }
     page * parent=load_page(temp_n_parent);
     // printf("parent key: ");
@@ -1366,9 +1268,9 @@ page * delete_entry(page * root, off_t n_offset, int key) {
         off_t right_neighbor_offset=parent->b_f[right_neighbor_index].p_offset;
         //  printf("rightneighbor_index: %d, rightk_prime_index: %d rightk_prime: %ld, rightneighbor_offset: %ld, num key: %d \n",right_neighbor_index,right_k_prime_index,right_k_prime,right_neighbor_offset,right_neighbor->num_of_keys);
         if (right_neighbor->num_of_keys + n->num_of_keys <= capacity) {
-           
+        //    printf("right와 merge\n");
             //이러면 무조건 n이 왼쪽으로 가서... 저 함수 내부에서 case 나눠서 swap하기가 힘듦... 그냥 여기서 swap해서 보내는 걸로.
-            return coalesce_nodes(root, right_neighbor, right_neighbor_offset, n, n_offset,right_neighbor_index, right_k_prime);}
+            return coalesce_nodes(root, n, n_offset,right_neighbor, right_neighbor_offset,-2, right_k_prime);}
         else return redistribute_nodes(root, n,n_offset, neighbor, neighbor_offset, neighbor_index, k_prime_index, k_prime);
     }
 
@@ -1379,52 +1281,52 @@ page * delete_entry(page * root, off_t n_offset, int key) {
 
 
 
-void tree_reset_all() {
-    if (hp->rpo==0) {
-        printf("Tree is already empty.\n");
-        return;
-    }
+// void tree_reset_all() {
+//     if (hp->rpo==0) {
+//         printf("Tree is already empty.\n");
+//         return;
+//     }
 
-    printf("Resetting the entire tree...\n");
+//     printf("Resetting the entire tree...\n");
 
-    // Step 1: 모든 노드를 트리 순회하면서 초기화
-    reset_tree_nodes(rt);
+//     // Step 1: 모든 노드를 트리 순회하면서 초기화
+//     reset_tree_nodes(rt);
 
-    // Step 2: 헤더 페이지 초기화
-    hp->fpo = 0;       // Free page offset을 0으로 초기화
-    hp->rpo = 0;       // Root page offset 초기화
-    hp->num_of_pages = 1; // Header 페이지만 존재한다고 가정
-    pwrite(fd, hp, sizeof(H_P), 0); // 디스크에 헤더 페이지 쓰기
-    pwrite(fd,rt,sizeof(page),hp->rpo);
-    printf("Tree reset complete.\n");
+//     // Step 2: 헤더 페이지 초기화
+//     hp->fpo = 0;       // Free page offset을 0으로 초기화
+//     hp->rpo = 0;       // Root page offset 초기화
+//     hp->num_of_pages = 1; // Header 페이지만 존재한다고 가정
+//     pwrite(fd, hp, sizeof(H_P), 0); // 디스크에 헤더 페이지 쓰기
+//     pwrite(fd,rt,sizeof(page),hp->rpo);
+//     printf("Tree reset complete.\n");
 
-    rt = NULL; // 메모리상 트리 루트도 NULL로 설정
-}
+//     rt = NULL; // 메모리상 트리 루트도 NULL로 설정
+// }
 
-void reset_tree_nodes(page *current) {
-    if (current == NULL) return;
+// void reset_tree_nodes(page *current) {
+//     if (current == NULL) return;
 
-    // Step 1: 리프 페이지인지 확인
-    if (!current->is_leaf) {
-        // Step 2: 자식 노드 순회
-        if(current->next_offset!=0){
-            page * child=load_page(current->next_offset);
-            reset_tree_nodes(child);
-            free(child);
-        }
-        for (int i = 0; i <= current->num_of_keys; i++) {
-            off_t child_offset = current->b_f[i].p_offset;
-            if (child_offset != 0) {
-                page *child = load_page(child_offset);
-                reset_tree_nodes(child);
-                free(child); // 메모리 해제
-            }
-        }
-    }
+//     // Step 1: 리프 페이지인지 확인
+//     if (!current->is_leaf) {
+//         // Step 2: 자식 노드 순회
+//         if(current->next_offset!=0){
+//             page * child=load_page(current->next_offset);
+//             reset_tree_nodes(child);
+//             free(child);
+//         }
+//         for (int i = 0; i <= current->num_of_keys; i++) {
+//             off_t child_offset = current->b_f[i].p_offset;
+//             if (child_offset != 0) {
+//                 page *child = load_page(child_offset);
+//                 reset_tree_nodes(child);
+//                 free(child); // 메모리 해제
+//             }
+//         }
+//     }
 
-    // Step 3: 현재 페이지 초기화
-    usetofree(current->parent_page_offset); // 현재 페이지를 free list에 등록
-}
+//     // Step 3: 현재 페이지 초기화
+//     usetofree(current->parent_page_offset); // 현재 페이지를 free list에 등록
+// }
 int db_delete(int64_t key) {
     
     char * check=db_find(key);
@@ -1438,7 +1340,7 @@ int db_delete(int64_t key) {
         free(leaf);
         return 0;
     }
-    printf("없는 값 delete 시도\n");
+    // printf("없는 값 delete 시도\n");
     return -1;
 }//fin
 

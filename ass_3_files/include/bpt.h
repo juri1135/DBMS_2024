@@ -54,7 +54,6 @@ extern page * rt;
 
 extern H_P * hp;
 // FUNCTION PROTOTYPES.
-void print_leaf();
 int open_table(char * pathname);
 int originopen_table(char * pathname);
 H_P * load_header(off_t off);
@@ -67,13 +66,11 @@ void freetouse(off_t fpo);
 int cut(int length);
 int parser();
 void start_new_file(record rec);
-
 char * db_find(int64_t key);
 int db_insert(int64_t key, char * value);
-int db_delete(int64_t key);
+// int db_delete(int64_t key);
 
-void print_keys(off_t page_offset, int depth);
-void print_bpt();
+
 page * find_leaf(off_t root, int key);
 off_t find_offset(int64_t key);
 record make_record(int64_t key, char * value);
@@ -88,13 +85,13 @@ page * leaf_right_rotation(page * root, off_t leaf_offset, page* leaf, off_t rig
 off_t common_parent(page * left, off_t left_offset, page * right, off_t right_offset, int64_t key);
 page * change_common_parent(page * parent,off_t parent_offset, off_t child_offset, int64_t key);
 
-page * remove_entry_from_node(page * n, off_t n_offset,int key);
-page * adjust_root(page * root);
-page * coalesce_nodes(page * root, page * n, off_t n_offset, page * neighbor, off_t neighbor_offset, int neighbor_index, int k_prime);
-page * redistribute_nodes(page * root, page * n, off_t n_offset, page * neighbor, off_t neighbor_offset, int neighbor_index, int k_prime_index, int k_prime);
-page * delete_entry(page * root, off_t n_offset, int key);
-void tree_reset_all();
-void reset_tree_nodes(page *current);
+// page * remove_entry_from_node(page * n, off_t n_offset,int key);
+// page * adjust_root(page * root);
+// page * coalesce_nodes(page * root, page * n, off_t n_offset, page * neighbor, off_t neighbor_offset, int neighbor_index, int k_prime);
+// page * redistribute_nodes(page * root, page * n, off_t n_offset, page * neighbor, off_t neighbor_offset, int neighbor_index, int k_prime_index, int k_prime);
+// page * delete_entry(page * root, off_t n_offset, int key);
+// void tree_reset_all();
+// void reset_tree_nodes(page *current);
 
 #endif /* __BPT_H__*/
 

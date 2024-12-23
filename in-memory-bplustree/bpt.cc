@@ -1143,7 +1143,7 @@ node * delete_entry( node * root, node * n, int key, void * pointer ) {
     // Remove key and pointer from node.
 
     n = remove_entry_from_node(n, key, (node *)pointer);
-
+    //key가 존재하는 node... 저 node에서 key, value 지워줘라 
     /* Case:  deletion from the root. 
      */
 

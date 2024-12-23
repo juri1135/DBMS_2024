@@ -12,14 +12,13 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <string.h>
-#define LEAF_MAX 31
-#define INTERNAL_MAX 248
+#define LEAF_MAX 4
+#define INTERNAL_MAX 6
 
 typedef struct record{
     int64_t key;
     char value[120];
 }record;
-
 typedef struct inter_record {
     int64_t key;
     off_t p_offset;
@@ -73,12 +72,12 @@ off_t insert_into_new_root(int index, off_t old, int64_t key, off_t newp);
 off_t insert_into_internal(int index, off_t bumo, int left_index, int64_t key, off_t newp);
 off_t insert_into_internal_as(int index, off_t bumo, int left_index, int64_t key, off_t newp);
 
-int db_delete(int index, int64_t key);
-void delete_entry(int index, int64_t key, off_t deloff);
-void redistribute_pages(int index, off_t need_more, int nbor_index, off_t nbor_off, off_t par_off, int64_t k_prime, int k_prime_index);
-void coalesce_pages(int index, off_t will_be_coal, int nbor_index, off_t nbor_off, off_t par_off, int64_t k_prime);
-void adjust_root(int index, off_t deloff);
-void remove_entry_from_page(int index, int64_t key, off_t deloff);
+int db_delete( int64_t key);
+void delete_entry( int64_t key, off_t deloff);
+void redistribute_pages( off_t need_more, int nbor_index, off_t nbor_off, off_t par_off, int64_t k_prime, int k_prime_index);
+void coalesce_pages( off_t will_be_coal, int nbor_index, off_t nbor_off, off_t par_off, int64_t k_prime);
+void adjust_root( off_t deloff);
+void remove_entry_from_page( int64_t key, off_t deloff);
 void usetofree(int index, off_t wbf);
 
 // Assignment 4
