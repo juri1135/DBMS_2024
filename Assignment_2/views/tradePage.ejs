@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title><%= stockID %> 거래하기</title>
+  </head>
+  <body>
+    <h1><%= stockID %> 거래하기</h1>
+
+    <!-- 현재 가격 표시 -->
+    <p>현재 가격: <%= curPrice.toLocaleString(); %> 원</p>
+
+    <!-- 시장가, 지정가 선택 버튼 -->
+    <div>
+      <button onclick="selectMarketPrice()">시장가</button>
+      <button onclick="selectLimitPrice()">지정가</button>
+    </div>
+
+    <!-- 수량 및 가격 입력 -->
+    <div id="trade-info">
+      <input
+        type="number"
+        id="quantity"
+        placeholder="수량 입력"
+        min="1"
+        disabled
+      />
+      <input
+        type="number"
+        id="price"
+        placeholder="가격 입력"
+        min="1"
+        disabled
+      />
+    </div>
+
+    <!-- 매수하기, 매도하기 버튼 -->
+    <div>
+      <button onclick="buy()">매수하기</button>
+      <button onclick="sell()">매도하기</button>
+    </div>
+
+    <script>
+      let selectedPriceType = "";
+      let selectedOrderType = "";
+      let curPrice = Number(`<%= curPrice %>`);
+      let balance = 0;
+      let tradableQty = 0;
+
+      function selectMarketPrice() {
+        selectedPriceType = "시장가";
+        document.getElementById("price").value = "";
+        document.getElementById("price").disabled = true;
+        document.getElementById("quantity").disabled = false;
+      }
+
+      function selectLimitPrice() {
+        selectedPriceType = "지정가";
+        document.getElementById("price").value = "";
+        document.getElementById("price").disabled = false;
+        document.getElementById("quantity").disabled = false;
+      }
+
+      function buy() {
+        if (!selectedPriceType) {
+          return;
+        }
+        selectedOrderType = "매수";
+        checkOrderConditions();
+        resetInputs();
+      }
+
+      function sell() {
+        if (!selectedPriceType) {
+          return;
+        }
+        selectedOrderType = "매도";
+        checkOrderConditions();
+        resetInputs();
+      }
+
+      function checkOrderConditions() {
+        const quantity = parseInt(document.getElementById("quantity").value);
+        const price =
+          selectedPriceType === "시장가"
+            ? curPrice
+            : parseInt(document.getElementById("price").value);
+        const totalPrice = quantity * price;
+
+        if (isNaN(quantity) || isNaN(price) || price <= 0 || quantity <= 0) {
+          return;
+        }
+
+        if (selectedOrderType === "매수") {
+          fetchBalance((balance) => {
+            if (totalPrice <= balance) {
+              updateBalance(totalPrice);
+              processOrder(quantity, price);
+            } else {
+              alert("잔액이 부족합니다.");
+            }
+          });
+        } else if (selectedOrderType === "매도") {
+          fetchTradableQty((tradableQty) => {
+            if (quantity <= tradableQty) {
+              updateTradableQty(quantity);
+              processOrder(quantity, price);
+            } else {
+              alert("거래 가능 수량이 부족합니다.");
+            }
+          });
+        }
+      }
+
+      function fetchBalance(callback) {
+        fetch("/userInfo/balance")
+          .then((response) => response.json())
+          .then((data) => {
+            balance = data.balance;
+            callback(balance);
+          });
+      }
+
+      function fetchTradableQty(callback) {
+        fetch(`/portfolio/tradableQty?stockID=<%= stockID %>`)
+          .then((response) => response.json())
+          .then((data) => {
+            tradableQty = data.quantity;
+            callback(tradableQty);
+          });
+      }
+
+      function processOrder(quantity, price) {
+        fetch("/trade", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userID: "<%= userID %>",
+            stockID: "<%= stockID %>",
+            price: price,
+            quantity: quantity,
+            orderType: selectedOrderType,
+            priceType: selectedPriceType,
+          }),
+        });
+      }
+
+      function updateBalance(amount) {
+        const balanceChange = -Math.abs(amount);
+        fetch("/userInfo/updateBalance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userID: "<%= userID %>",
+            balanceChange: balanceChange,
+          }),
+        }).catch((error) => console.error("Error:", error));
+      }
+      function updateTradableQty(quantity) {
+        fetch(`/portfolio/updateTradableQty`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userID: "<%= userID %>",
+            stockID: "<%= stockID %>",
+            quantity: -Math.abs(quantity), // 매도 시 수량 감소를 위해 음수 사용
+          }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              console.log("Tradable quantity updated successfully.");
+            } else {
+              console.error("Failed to update tradable quantity.");
+            }
+          })
+          .catch((error) =>
+            console.error("Error updating tradable quantity:", error)
+          );
+      }
+      function resetInputs() {
+        document.getElementById("quantity").value = "";
+        document.getElementById("price").value =
+          selectedPriceType === "시장가" ? curPrice : "";
+      }
+    </script>
+  </body>
+</html>

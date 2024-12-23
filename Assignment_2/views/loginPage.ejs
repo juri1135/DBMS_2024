@@ -1,0 +1,19 @@
+<!-- views/loginPage.ejs -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Login Page</title>
+  </head>
+  <body>
+    <h1>로그인</h1>
+    <form action="/login" method="POST">
+      <input type="text" name="userID" placeholder="아이디" required />
+      <input type="password" name="password" placeholder="비밀번호" required />
+      <button type="submit">로그인</button>
+    </form>
+    <% if (loginResult === 'fail') { %>
+    <p style="color: red">아이디 또는 비밀번호가 올바르지 않습니다.</p>
+    <% } %>
+  </body>
+</html>

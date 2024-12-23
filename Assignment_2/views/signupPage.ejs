@@ -1,0 +1,25 @@
+<!-- views/signupPage.ejs -->
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Sign Up Page</title>
+  </head>
+  <body>
+    <h1>회원가입</h1>
+
+    <% if (signupResult === 'success') { %>
+      <p style="color: green">회원가입이 완료되었습니다!</p>
+      <button onclick="window.location.href='/login'">로그인하러 가기</button>
+    <% } else { %>
+      <form action="/signup" method="POST">
+        <input type="text" name="userID" placeholder="아이디" required />
+        <input type="password" name="userPassword" placeholder="비밀번호" required />
+        <button type="submit">회원가입</button>
+      </form>
+      <% if (signupResult === 'fail') { %>
+        <p style="color: red">이미 존재하는 아이디입니다.</p>
+      <% } %>
+    <% } %>
+  </body>
+</html>

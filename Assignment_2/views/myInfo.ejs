@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>My Info</title>
+  </head>
+  <body>
+    <h1>내 정보 페이지</h1>
+
+    <!-- 잔액 표시 및 입출금 기능 -->
+    <div>
+      <p>잔액: <span id="balance"><%= balance.toLocaleString() %></span> 원</p>
+      <input
+        type="number"
+        id="amount"
+        placeholder="금액을 입력하세요"
+        min="0"
+      />
+      <button onclick="deposit()">입금</button>
+      <button onclick="withdraw()">출금</button>
+      <p id="message" style="color: red"></p>
+    </div>
+
+    <!-- 내 거래 내역 보러 가기, 홈으로 가기, 주식 종목 보러 가기 버튼 -->
+    <div>
+      <button onclick="window.location.href='/transactions'">
+        내 거래 내역 보러 가기
+      </button>
+      <button onclick="window.location.href='/orderHistory'">
+        주문 내역 보러 가기
+      </button>
+      <button onclick="window.location.href='/'">홈으로 가기</button>
+      <button onclick="window.location.href='/stocks'">
+        주식 종목 보러 가기
+      </button>
+    </div>
+
+    <!-- 보유 주식 현황 -->
+    <h2>보유 주식 현황</h2>
+
+    <!-- 검색 기능 -->
+    <input
+      type="text"
+      id="searchStock"
+      placeholder="주식 이름 검색"
+      oninput="filterStocks()"
+    />
+
+    <table border="1">
+      <thead>
+        <tr>
+          <th>주식명</th>
+          <th>매수가</th>
+          <th>현재가</th>
+          <th>보유수량</th>
+          <th>평가손익</th>
+          <th>등락률</th>
+          <th>거래 가능 수량</th>
+        </tr>
+      </thead>
+      <tbody id="stock-list">
+        <% portfolio.forEach(stock => { %> <% if (stock.quantity > 0) { %>
+        <tr class="stock-row">
+          <td class="stock-name"><%= stock.stockID %></td>
+          <td><%= stock.avgPrice.toLocaleString() %></td>
+          <td><%= stock.curPrice.toLocaleString() %></td>
+          <td><%= stock.quantity.toLocaleString() %></td>
+          <td><%= stock.evalPL.toLocaleString() %></td>
+          <td><%= stock.chgPercent %> %</td>
+          <td><%= stock.tradQty.toLocaleString() %></td>
+        </tr>
+        <% } %> <% }) %>
+      </tbody>
+    </table>
+
+    <script>
+      // 입금 함수
+      function deposit() {
+        const amount = parseInt(document.getElementById("amount").value);
+        if (isNaN(amount) || amount <= 0) {
+          document.getElementById("message").textContent =
+            "유효한 금액을 입력하세요.";
+          return;
+        }
+        fetch("/userInfo/updateBalance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userID: "<%= userID %>", // EJS를 사용하여 userID를 포함
+            balanceChange: amount,
+          }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            document.getElementById("balance").textContent = data.balance;
+            document.getElementById("message").textContent = "입금 완료!";
+          })
+          .catch((error) => console.error(error));
+      }
+
+      // 출금 함수
+      function withdraw() {
+        const amount = parseInt(document.getElementById("amount").value);
+        if (isNaN(amount) || amount <= 0) {
+          document.getElementById("message").textContent =
+            "유효한 금액을 입력하세요.";
+          return;
+        }
+        const balanceChange = -Math.abs(amount);
+        fetch("/userInfo/updateBalance", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userID: "<%= userID %>", // EJS를 사용하여 userID를 포함
+            balanceChange,
+          }),
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            if (data.success) {
+              document.getElementById("balance").textContent = data.balance;
+              document.getElementById("message").textContent = "출금 완료!";
+            } else {
+              document.getElementById("message").textContent = "잔액 부족";
+            }
+          })
+          .catch((error) => console.error(error));
+      }
+
+      // 주식 이름 검색 필터 함수
+      function filterStocks() {
+        const searchValue = document
+          .getElementById("searchStock")
+          .value.toLowerCase();
+        const rows = document.querySelectorAll(".stock-row");
+
+        rows.forEach((row) => {
+          const stockName = row
+            .querySelector(".stock-name")
+            .textContent.toLowerCase();
+          if (stockName.includes(searchValue)) {
+            row.style.display = "";
+          } else {
+            row.style.display = "none";
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
